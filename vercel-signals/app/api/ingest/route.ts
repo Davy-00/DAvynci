@@ -1,7 +1,7 @@
 import { kv } from "@vercel/kv";
 import { Resend } from "resend";
 import { NextRequest, NextResponse } from "next/server";
-import { actionableSignals, signalDigest, SignalSnapshot } from "@/lib/signals";
+import { actionableSignals, signalDigest, SignalSnapshot, signalLabel } from "@/lib/signals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +39,12 @@ export async function POST(req: NextRequest) {
 
   if (active.length > 0 && digest !== lastDigest) {
     const resendApiKey = process.env.RESEND_API_KEY || "";
-    const to = process.env.SIGNAL_EMAIL_TO || "";
+    let to = process.env.SIGNAL_EMAIL_TO || "";
+    try {
+      to = (await kv.get<string>("bot:alert_email")) || to;
+    } catch {
+      // Keep env fallback if KV unavailable.
+    }
     const from = process.env.SIGNAL_EMAIL_FROM || "bebisday@gmail.com";
 
     if (resendApiKey && to) {
@@ -47,7 +52,7 @@ export async function POST(req: NextRequest) {
       const rows = active
         .map(
           (s) =>
-            `<tr><td>${s.symbol}</td><td>${String(s.side).toUpperCase()}</td><td>${s.lot ?? ""}</td><td>${s.sl ?? ""}</td><td>${s.tp ?? ""}</td><td>${(s.score ?? 0).toFixed(2)}</td></tr>`
+            `<tr><td>${s.symbol}</td><td>${signalLabel(s)}</td><td>${s.lot ?? ""}</td><td>${s.sl ?? ""}</td><td>${s.tp ?? ""}</td><td>${(s.score ?? 0).toFixed(2)}</td></tr>`
         )
         .join("");
 
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
         from,
         to,
         subject: `DAvynci Signals: ${active.length} Active Call(s)`,
-        html: `<h2>Active Trade Calls</h2><p>Time: ${body.timestamp_utc}</p><table border='1' cellpadding='6' cellspacing='0'><thead><tr><th>Symbol</th><th>Side</th><th>Lot</th><th>SL</th><th>TP</th><th>Score</th></tr></thead><tbody>${rows}</tbody></table>`,
+        html: `<h2>Active Trade Calls</h2><p>Time: ${body.timestamp_utc}</p><table border='1' cellpadding='6' cellspacing='0'><thead><tr><th>Pair</th><th>Signal</th><th>Lot Size</th><th>SL</th><th>TP</th><th>Score</th></tr></thead><tbody>${rows}</tbody></table>`,
       });
       try {
         await kv.set("bot:last_email_digest", digest);

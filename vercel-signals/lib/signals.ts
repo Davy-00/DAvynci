@@ -2,6 +2,7 @@ export type BotSignal = {
   symbol: string;
   status: string;
   side: string;
+  order_type?: string;
   score: number;
   min_required_score: number;
   lot: number;
@@ -20,13 +21,22 @@ export type SignalSnapshot = {
 
 export function actionableSignals(snapshot: SignalSnapshot): BotSignal[] {
   return (snapshot.signals || []).filter(
-    (s) => s.status === "signal" && (s.side === "buy" || s.side === "sell")
+    (s) => s.status === "signal" && ["buy", "sell", "buy_limit", "sell_limit"].includes(String(s.side || "").toLowerCase())
   );
+}
+
+export function signalLabel(signal: BotSignal): string {
+  const side = String(signal.side || "").toLowerCase();
+  if (side === "buy_limit") return "BUY LIMIT";
+  if (side === "sell_limit") return "SELL LIMIT";
+  if (side === "buy") return "BUY";
+  if (side === "sell") return "SELL";
+  return side.toUpperCase() || "UNKNOWN";
 }
 
 export function signalDigest(signals: BotSignal[]): string {
   const core = signals
-    .map((s) => [s.symbol, s.side, s.lot, s.sl, s.tp, s.score].join("|"))
+    .map((s) => [s.symbol, s.side, s.order_type || "", s.lot, s.sl, s.tp, s.score].join("|"))
     .sort()
     .join(";");
   return core;

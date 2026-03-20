@@ -56,3 +56,27 @@ th, td {
   padding: 10px 8px;
   font-size: 14px;
 }
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #34425f;
+  background: #0f1a2e;
+  color: #e6edf7;
+}
+
+.btn {
+  padding: 10px 14px;
+  border: 1px solid #3760d9;
+  background: #2d57d2;
+  color: #ffffff;
+  border-radius: 10px;
+  cursor: pointer;
+}

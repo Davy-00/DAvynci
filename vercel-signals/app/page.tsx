@@ -419,10 +419,19 @@ export default function HomePage() {
       return {
         points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
         equityPath: "",
+        equityAreaPath: "",
         balancePath: "",
         netPath: "",
         minY: 0,
         maxY: 1,
+        gridLines: [] as number[],
+        currentEq: STARTING_BALANCE,
+        currentBal: STARTING_BALANCE,
+        currentNet: 0,
+        highEq: STARTING_BALANCE,
+        lowEq: STARTING_BALANCE,
+        changePct: 0,
+        perMinute: 0,
         tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
       };
     }
@@ -452,10 +461,19 @@ export default function HomePage() {
       return {
         points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
         equityPath: "",
+        equityAreaPath: "",
         balancePath: "",
         netPath: "",
         minY: 0,
         maxY: 1,
+        gridLines: [] as number[],
+        currentEq: STARTING_BALANCE,
+        currentBal: STARTING_BALANCE,
+        currentNet: 0,
+        highEq: STARTING_BALANCE,
+        lowEq: STARTING_BALANCE,
+        changePct: 0,
+        perMinute: 0,
         tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
       };
     }
@@ -493,6 +511,13 @@ export default function HomePage() {
     const xFor = (i: number) => (smoothed.length === 1 ? w / 2 : px + (i / (smoothed.length - 1)) * (w - px * 2));
     const yFor = (v: number) => h - py - ((v - min) / span) * (h - py * 2);
     const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
+    const areaFor = (arr: number[]) => {
+      const line = pathFor(arr);
+      const endX = xFor(arr.length - 1).toFixed(2);
+      const startX = xFor(0).toFixed(2);
+      const baseY = yFor(min).toFixed(2);
+      return `${line} L${endX} ${baseY} L${startX} ${baseY} Z`;
+    };
 
     const minTs = smoothed[0].tsMs;
     const maxTs = smoothed[smoothed.length - 1].tsMs;
@@ -508,20 +533,42 @@ export default function HomePage() {
           .slice(0, 80)
           .map((t) => ({
             x: xForTs(t.tsMs),
-            y: yFor(showNetSeries ? Number(t.pnl || 0) : smoothed[smoothed.length - 1].equity),
+            y: yFor(
+              showNetSeries
+                ? Number(t.pnl || 0)
+                : smoothed.reduce((best, p) => {
+                    return Math.abs(p.tsMs - t.tsMs) < Math.abs(best.tsMs - t.tsMs) ? p : best;
+                  }, smoothed[0]).equity
+            ),
             pnl: Number(t.pnl || 0),
             closeReason: String(t.close_reason || ""),
             symbol: String(t.symbol || ""),
           }))
       : [];
 
+    const current = smoothed[smoothed.length - 1];
+    const first = smoothed[0];
+    const prev = smoothed.length > 1 ? smoothed[smoothed.length - 2] : current;
+    const dtMin = Math.max(1 / 60, (current.tsMs - prev.tsMs) / 60000);
+    const perMinute = (current.equity - prev.equity) / dtMin;
+    const gridLines = [0, 1, 2, 3, 4].map((i) => py + (i / 4) * (h - py * 2));
+
     return {
       points: smoothed,
       equityPath: pathFor(smoothed.map((p) => p.equity)),
+      equityAreaPath: areaFor(smoothed.map((p) => p.equity)),
       balancePath: pathFor(smoothed.map((p) => p.balance)),
       netPath: pathFor(smoothed.map((p) => p.net)),
       minY: min,
       maxY: max,
+      gridLines,
+      currentEq: current.equity,
+      currentBal: current.balance,
+      currentNet: current.net,
+      highEq: Math.max(...smoothed.map((p) => p.equity)),
+      lowEq: Math.min(...smoothed.map((p) => p.equity)),
+      changePct: first.equity > 0 ? ((current.equity - first.equity) / first.equity) * 100 : 0,
+      perMinute,
       tradeMarkers: markers,
     };
   }, [
@@ -841,13 +888,37 @@ export default function HomePage() {
 
             {performance.points.length ? (
               <>
-                <svg viewBox="0 0 920 280" width="100%" height="280" role="img" aria-label="Filtered performance chart">
-                  <rect x="0" y="0" width="920" height="280" fill="#f8fbff" rx="10" />
+                <div className="perf-strip">
+                  <div><span>Equity</span><strong>{fmtMoney(performance.currentEq)}</strong></div>
+                  <div><span>Balance</span><strong>{fmtMoney(performance.currentBal)}</strong></div>
+                  <div><span>Net</span><strong className={performance.currentNet >= 0 ? "up" : "down"}>{fmtMoney(performance.currentNet)}</strong></div>
+                  <div><span>High</span><strong>{fmtMoney(performance.highEq)}</strong></div>
+                  <div><span>Low</span><strong>{fmtMoney(performance.lowEq)}</strong></div>
+                  <div><span>Change</span><strong className={performance.changePct >= 0 ? "up" : "down"}>{performance.changePct.toFixed(2)}%</strong></div>
+                  <div><span>Speed</span><strong className={performance.perMinute >= 0 ? "up" : "down"}>{fmtMoney(performance.perMinute)}/m</strong></div>
+                </div>
+
+                <svg viewBox="0 0 920 320" width="100%" height="320" role="img" aria-label="Filtered performance chart">
+                  <defs>
+                    <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#20b486" stopOpacity="0.36" />
+                      <stop offset="100%" stopColor="#20b486" stopOpacity="0.03" />
+                    </linearGradient>
+                    <radialGradient id="chart-bg" cx="50%" cy="10%" r="75%">
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="100%" stopColor="#f3f8ff" />
+                    </radialGradient>
+                  </defs>
+                  <rect x="0" y="0" width="920" height="320" fill="url(#chart-bg)" rx="12" />
+                  {performance.gridLines.map((y, i) => (
+                    <line key={`g-${i}`} x1="18" y1={y} x2="902" y2={y} stroke="#dfe8f4" strokeDasharray="4 6" />
+                  ))}
+                  {showEquitySeries ? <path d={performance.equityAreaPath} fill="url(#eq-fill)" /> : null}
                   {showBalanceSeries ? <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.9" /> : null}
                   {showEquitySeries ? <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" /> : null}
                   {showNetSeries ? <path d={performance.netPath} fill="none" stroke="#9b2c2c" strokeWidth="2" strokeDasharray="5 4" /> : null}
                   {performance.tradeMarkers.map((m, i) => (
-                    <circle key={`mk-${i}`} cx={m.x} cy={m.y} r="4" fill={m.pnl >= 0 ? "#0e9f6e" : "#b9303d"}>
+                    <circle key={`mk-${i}`} cx={m.x} cy={m.y} r="5" fill={m.pnl >= 0 ? "#0e9f6e" : "#b9303d"} stroke="#ffffff" strokeWidth="2">
                       <title>{`${m.symbol} ${m.closeReason} ${fmtMoney(m.pnl)}`}</title>
                     </circle>
                   ))}

@@ -161,8 +161,10 @@ function snapshotFingerprint(s: Snapshot | null): string {
   const trades = Number(s.guard_state?.today_opened_trades ?? 0);
   const signals = Array.isArray(s.signals) ? s.signals.length : 0;
   const positions = Array.isArray(s.bot_positions) ? s.bot_positions.length : 0;
+  const closedTrades = Array.isArray(s.closed_trades) ? s.closed_trades.length : 0;
+  const perfPoints = Array.isArray(s.performance_history) ? s.performance_history.length : 0;
   const ts = String(s.timestamp_utc || "");
-  return `${ts}|${eq}|${bal}|${trades}|${signals}|${positions}`;
+  return `${ts}|${eq}|${bal}|${trades}|${signals}|${positions}|${closedTrades}|${perfPoints}`;
 }
 
 function useAnimatedNumber(target: number, durationMs = 320): number {
@@ -245,6 +247,9 @@ export default function HomePage() {
 
     try {
       es = new EventSource("/api/stream");
+      es.onopen = () => {
+        if (mounted) setLiveMode("stream");
+      };
       es.addEventListener("snapshot", (evt) => {
         if (!mounted) return;
         const msg = evt as MessageEvent;
@@ -263,7 +268,7 @@ export default function HomePage() {
     }
 
     loadSignals();
-    const poll = setInterval(loadSignals, 5000);
+    const poll = setInterval(loadSignals, 1000);
     const clock = setInterval(() => setNowMs(Date.now()), 1000);
     return () => {
       mounted = false;

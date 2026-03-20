@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const STARTING_BALANCE = 200;
 
 type PnlView = "day" | "week" | "month";
-type MainTab = "overview" | "pnl" | "signals" | "positions" | "events" | "logs" | "diagnostics";
+type MainTab = "overview" | "pnl" | "signals" | "positions" | "trades" | "events" | "logs" | "diagnostics";
 
 type Signal = {
   symbol: string;
@@ -47,6 +47,19 @@ type Snapshot = {
     sl: number;
     tp: number;
     profit: number;
+  }>;
+  closed_trades?: Array<{
+    position_id: number;
+    symbol: string;
+    side: string;
+    volume: number;
+    entry_price: number;
+    close_price: number;
+    entry_time_utc: string;
+    close_time_utc: string;
+    pnl: number;
+    close_reason: string;
+    reason_icon: string;
   }>;
   recent_events?: Array<{
     timestamp_utc: string;
@@ -414,6 +427,7 @@ export default function HomePage() {
           ["pnl", "PnL Book"],
           ["signals", "Signals"],
           ["positions", "Positions"],
+          ["trades", "Trades"],
           ["events", "Events"],
           ["logs", "Logs"],
           ["diagnostics", "Diagnostics"],
@@ -568,6 +582,51 @@ export default function HomePage() {
               </tbody>
             </table></div>
           )}
+        </div>
+      ) : null}
+
+      {tab === "trades" ? (
+        <div className="card">
+          <h3>Closed Trades (All)</h3>
+          {!(snapshot?.closed_trades || []).length ? (
+            <p>No closed trades yet.</p>
+          ) : (
+            <div className="table-wrap"><table>
+              <thead>
+                <tr>
+                  <th>Icon</th>
+                  <th>Close Type</th>
+                  <th>Pair</th>
+                  <th>Side</th>
+                  <th>Lot</th>
+                  <th>Entry</th>
+                  <th>Close</th>
+                  <th>PnL</th>
+                  <th>Opened (UTC)</th>
+                  <th>Closed (UTC)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(snapshot?.closed_trades || []).map((t, i) => (
+                  <tr key={`${t.position_id}-${i}`}>
+                    <td><span className={`trade-icon ${String(t.close_reason || "").toLowerCase()}`}>{t.reason_icon || "?"}</span></td>
+                    <td><span className={`exit-badge ${String(t.close_reason || "").toLowerCase()}`}>{t.close_reason}</span></td>
+                    <td>{t.symbol}</td>
+                    <td>{String(t.side || "").toUpperCase()}</td>
+                    <td>{Number(t.volume || 0).toFixed(2)}</td>
+                    <td>{Number(t.entry_price || 0).toFixed(5)}</td>
+                    <td>{Number(t.close_price || 0).toFixed(5)}</td>
+                    <td className={Number(t.pnl || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(t.pnl || 0))}</td>
+                    <td>{t.entry_time_utc || "-"}</td>
+                    <td>{t.close_time_utc || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+          <p className="muted" style={{ marginTop: 10 }}>
+            Icons: T=TP, S=SL, R=Trailed SL, B=Break-even, M=Manual.
+          </p>
         </div>
       ) : null}
 

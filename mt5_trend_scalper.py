@@ -1,5 +1,6 @@
 import time
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -99,6 +100,166 @@ def read_recent_bot_events(max_rows: int = 30) -> List[Dict[str, str]]:
             }
         )
     return out
+
+
+def read_sl_modifications(max_rows: int = 2000) -> Dict[int, List[Tuple[datetime, float]]]:
+    path = Path(CONFIG.bot_events_file)
+    if not path.exists():
+        return {}
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return {}
+    if df.empty:
+        return {}
+
+    out: Dict[int, List[Tuple[datetime, float]]] = {}
+    rows = df.tail(max_rows)
+    ticket_re = re.compile(r"ticket=(\d+)")
+    sl_re = re.compile(r"sl=([-+]?[0-9]*\.?[0-9]+)")
+    for _, row in rows.iterrows():
+        if str(row.get("event_type", "")) != "sl_modified":
+            continue
+        details = str(row.get("details", ""))
+        ts_raw = str(row.get("timestamp_utc", ""))
+        m_ticket = ticket_re.search(details)
+        m_sl = sl_re.search(details)
+        if not m_ticket or not m_sl:
+            continue
+        try:
+            ticket = int(m_ticket.group(1))
+            sl_value = float(m_sl.group(1))
+            ts = pd.to_datetime(ts_raw, utc=True).to_pydatetime()
+        except Exception:
+            continue
+        out.setdefault(ticket, []).append((ts, sl_value))
+
+    for ticket in out:
+        out[ticket].sort(key=lambda x: x[0])
+    return out
+
+
+def classify_closed_trade(
+    side: str,
+    entry_price: float,
+    close_price: float,
+    initial_sl: float,
+    close_reason: str,
+    symbol: str,
+    sl_mods: List[Tuple[datetime, float]],
+) -> Tuple[str, str]:
+    reason = close_reason.upper()
+    icon = "?"
+    if reason == "TP":
+        return "TP", "T"
+
+    if reason != "SL":
+        if reason == "MANUAL":
+            return "MANUAL", "M"
+        return reason or "OTHER", "O"
+
+    info = mt5.symbol_info(symbol)
+    point = float(info.point) if info is not None else 0.0001
+    latest_sl = sl_mods[-1][1] if sl_mods else 0.0
+    sl_hit = latest_sl > 0 and abs(close_price - latest_sl) <= point * 6.0
+
+    if not sl_hit:
+        return "SL", "S"
+
+    # BE: SL moved close to entry and then hit.
+    be_tolerance = max(point * 12.0, abs(entry_price) * 0.00002)
+    if abs(latest_sl - entry_price) <= be_tolerance:
+        return "BE", "B"
+
+    # Trailed SL: SL was moved materially from initial stop and then hit.
+    if initial_sl > 0 and abs(latest_sl - initial_sl) > point * 10.0:
+        return "TRAILED_SL", "R"
+
+    return "SL", "S"
+
+
+def get_recent_closed_trades(now_utc: datetime, max_rows: int = 120, lookback_days: int = 14) -> List[Dict[str, object]]:
+    since = now_utc - timedelta(days=lookback_days)
+    deals = mt5.history_deals_get(since, now_utc)
+    if deals is None:
+        return []
+
+    sl_changes_by_ticket = read_sl_modifications(max_rows=3000)
+    entries_by_position: Dict[int, Dict[str, object]] = {}
+    rows: List[Dict[str, object]] = []
+
+    for d in sorted(deals, key=lambda x: x.time):
+        if d.magic != CONFIG.magic_number:
+            continue
+
+        entry_kind = int(d.entry)
+        position_id = int(getattr(d, "position_id", 0) or 0)
+        symbol = str(getattr(d, "symbol", ""))
+        side = "buy" if int(getattr(d, "type", 0)) in (getattr(mt5, "DEAL_TYPE_BUY", 0), getattr(mt5, "ORDER_TYPE_BUY", 0)) else "sell"
+
+        if entry_kind == mt5.DEAL_ENTRY_IN:
+            entries_by_position[position_id] = {
+                "symbol": symbol,
+                "side": side,
+                "entry_price": float(getattr(d, "price", 0.0) or 0.0),
+                "entry_time": datetime.fromtimestamp(int(d.time), tz=timezone.utc).isoformat(),
+                "initial_sl": float(getattr(d, "sl", 0.0) or 0.0),
+                "volume": float(getattr(d, "volume", 0.0) or 0.0),
+            }
+            continue
+
+        if entry_kind not in (mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_OUT_BY):
+            continue
+
+        if position_id <= 0:
+            continue
+
+        reason_code = int(getattr(d, "reason", -1))
+        if reason_code == getattr(mt5, "DEAL_REASON_TP", -999):
+            close_reason = "TP"
+        elif reason_code == getattr(mt5, "DEAL_REASON_SL", -999):
+            close_reason = "SL"
+        elif reason_code in (getattr(mt5, "DEAL_REASON_CLIENT", -999), getattr(mt5, "DEAL_REASON_EXPERT", -999)):
+            close_reason = "MANUAL"
+        else:
+            close_reason = "OTHER"
+
+        entry = entries_by_position.get(position_id, {})
+        entry_price = float(entry.get("entry_price", 0.0) or 0.0)
+        initial_sl = float(entry.get("initial_sl", 0.0) or 0.0)
+        trade_symbol = str(entry.get("symbol", symbol) or symbol)
+        sl_mods = sl_changes_by_ticket.get(position_id, [])
+
+        close_price = float(getattr(d, "price", 0.0) or 0.0)
+        final_reason, icon = classify_closed_trade(
+            str(entry.get("side", side) or side),
+            entry_price,
+            close_price,
+            initial_sl,
+            close_reason,
+            trade_symbol,
+            sl_mods,
+        )
+        pnl = float(getattr(d, "profit", 0.0) or 0.0) + float(getattr(d, "swap", 0.0) or 0.0) + float(getattr(d, "commission", 0.0) or 0.0)
+
+        rows.append(
+            {
+                "position_id": position_id,
+                "symbol": trade_symbol,
+                "side": str(entry.get("side", side) or side),
+                "volume": float(entry.get("volume", getattr(d, "volume", 0.0)) or 0.0),
+                "entry_price": entry_price,
+                "close_price": close_price,
+                "entry_time_utc": str(entry.get("entry_time", "")),
+                "close_time_utc": datetime.fromtimestamp(int(d.time), tz=timezone.utc).isoformat(),
+                "pnl": pnl,
+                "close_reason": final_reason,
+                "reason_icon": icon,
+            }
+        )
+
+    rows.sort(key=lambda r: str(r.get("close_time_utc", "")), reverse=True)
+    return rows[:max_rows]
 
 
 def read_recent_bot_logs(max_lines: int = 80) -> List[str]:
@@ -847,6 +1008,7 @@ def write_signal_snapshot(now_utc: datetime, signals: List[Dict[str, object]]) -
             "margin_free": float(account.margin_free) if account is not None else 0.0,
         },
         "bot_positions": bot_positions,
+        "closed_trades": get_recent_closed_trades(now_utc),
         "recent_events": read_recent_bot_events(),
         "recent_logs": read_recent_bot_logs(),
         "signals": signals,

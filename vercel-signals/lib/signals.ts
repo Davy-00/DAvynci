@@ -42,6 +42,19 @@ export type SignalSnapshot = {
     tp: number;
     profit: number;
   }>;
+  closed_trades?: Array<{
+    position_id: number;
+    symbol: string;
+    side: string;
+    volume: number;
+    entry_price: number;
+    close_price: number;
+    entry_time_utc: string;
+    close_time_utc: string;
+    pnl: number;
+    close_reason: string;
+    reason_icon: string;
+  }>;
   recent_events?: Array<{
     timestamp_utc: string;
     event_type: string;

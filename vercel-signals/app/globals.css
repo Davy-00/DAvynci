@@ -237,6 +237,84 @@ h3 {
   padding: 4px 10px;
 }
 
+.exit-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #d7e3f2;
+  background: #f4f8ff;
+  color: #2f4f73;
+}
+
+.exit-badge.tp {
+  background: #e7faef;
+  color: #0e8a54;
+  border-color: #bfe8cf;
+}
+
+.exit-badge.sl {
+  background: #ffecee;
+  color: #b9303d;
+  border-color: #ffd0d5;
+}
+
+.exit-badge.trailed_sl {
+  background: #e8f5ff;
+  color: #1c5fb1;
+  border-color: #c8e1fb;
+}
+
+.exit-badge.be {
+  background: #fff6e8;
+  color: #99600d;
+  border-color: #f2dbb2;
+}
+
+.exit-badge.manual {
+  background: #eff1f6;
+  color: #4a5e7a;
+  border-color: #d8dee8;
+}
+
+.trade-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #edf3fd;
+  color: #2f4f73;
+}
+
+.trade-icon.tp {
+  background: #e7faef;
+  color: #0e8a54;
+}
+
+.trade-icon.sl {
+  background: #ffecee;
+  color: #b9303d;
+}
+
+.trade-icon.trailed_sl {
+  background: #e8f5ff;
+  color: #1c5fb1;
+}
+
+.trade-icon.be {
+  background: #fff6e8;
+  color: #99600d;
+}
+
+.trade-icon.manual {
+  background: #eff1f6;
+  color: #4a5e7a;
+}
+
 .buy {
   background: #e7faef;
   color: #0e8a54;

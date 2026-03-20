@@ -2,48 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+const STARTING_BALANCE = 200;
+
 type PnlView = "day" | "week" | "month";
-
-type PnlRow = {
-  label: string;
-  pnl: number;
-};
-
-type CalendarCell = {
-  key: string;
-  day: number;
-  pnl: number | null;
-  isCurrentMonth: boolean;
-};
-
-function dateKeyUtc(ts: string): string {
-  const d = new Date(ts);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function startOfWeekUtc(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = d.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setUTCDate(d.getUTCDate() + diff);
-  return d;
-}
-
-function addDaysUtc(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
-}
-
-function fmtDateUtc(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+type MainTab = "overview" | "pnl" | "signals" | "positions" | "events" | "logs" | "diagnostics";
 
 type Signal = {
   symbol: string;
@@ -62,7 +24,6 @@ type Snapshot = {
   halted: boolean;
   halt_reason: string;
   dry_run?: boolean;
-  symbols?: string[];
   guard_state?: {
     today_opened_trades?: number;
     today_consecutive_losses?: number;
@@ -102,24 +63,73 @@ type Snapshot = {
   signals: Signal[];
 };
 
+type PerfPoint = { timestamp_utc: string; equity: number; balance: number };
+
+function signalType(s: Signal): string {
+  const side = String(s.side || "").toLowerCase();
+  if (side === "buy_limit") return "BUY LIMIT";
+  if (side === "sell_limit") return "SELL LIMIT";
+  if (side === "buy") return "BUY";
+  if (side === "sell") return "SELL";
+  return side.toUpperCase() || "UNKNOWN";
+}
+
+function dateKeyUtc(ts: string): string {
+  const d = new Date(ts);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function startOfWeekUtc(d: Date): Date {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = x.getUTCDay();
+  x.setUTCDate(x.getUTCDate() + (day === 0 ? -6 : 1 - day));
+  return x;
+}
+
+function startOfMonthUtc(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+function addDaysUtc(d: Date, days: number): Date {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + days);
+  return x;
+}
+
+function fmtMoney(v: number): string {
+  return `$${v.toFixed(2)}`;
+}
+
 export default function HomePage() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [email, setEmail] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [pnlView, setPnlView] = useState<PnlView>("day");
+  const [tab, setTab] = useState<MainTab>("overview");
+  const [nowMs, setNowMs] = useState(Date.now());
 
   useEffect(() => {
     let mounted = true;
+    let inFlight = false;
     const loadSignals = async () => {
-      const res = await fetch("/api/signals", { cache: "no-store" });
-      const data = await res.json();
-      if (mounted) setSnapshot(data);
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const res = await fetch(`/api/signals?t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+        if (mounted) setSnapshot(data);
+      } finally {
+        inFlight = false;
+      }
     };
+
     loadSignals();
-    const t = setInterval(loadSignals, 3000);
+    const poll = setInterval(loadSignals, 1000);
+    const clock = setInterval(() => setNowMs(Date.now()), 1000);
     return () => {
       mounted = false;
-      clearInterval(t);
+      clearInterval(poll);
+      clearInterval(clock);
     };
   }, []);
 
@@ -136,192 +146,146 @@ export default function HomePage() {
     };
   }, []);
 
-  const active = useMemo(
+  const performancePoints = useMemo<PerfPoint[]>(() => {
+    return (snapshot?.performance_history || [])
+      .map((p) => ({
+        timestamp_utc: String(p.timestamp_utc || ""),
+        equity: Number(p.equity),
+        balance: Number(p.balance),
+      }))
+      .filter((p) => p.timestamp_utc && Number.isFinite(p.equity) && Number.isFinite(p.balance))
+      .sort((a, b) => a.timestamp_utc.localeCompare(b.timestamp_utc));
+  }, [snapshot]);
+
+  const activeSignals = useMemo(
     () =>
-      (snapshot?.signals || []).filter((s) =>
-        s.status === "signal" && ["buy", "sell", "buy_limit", "sell_limit"].includes(String(s.side || "").toLowerCase())
+      (snapshot?.signals || []).filter(
+        (s) => s.status === "signal" && ["buy", "sell", "buy_limit", "sell_limit"].includes(String(s.side || "").toLowerCase())
       ),
     [snapshot]
   );
 
-  const performance = useMemo(() => {
-    const points = (snapshot?.performance_history || []).slice(-120);
-    if (!points.length) {
-      return {
-        equityPath: "",
-        balancePath: "",
-        minY: 0,
-        maxY: 1,
-      };
-    }
+  const floatingPnl = useMemo(
+    () => (snapshot?.bot_positions || []).reduce((acc, p) => acc + Number(p.profit || 0), 0),
+    [snapshot]
+  );
 
-    const width = 920;
-    const height = 240;
-    const padX = 18;
-    const padY = 16;
-    const values = points.flatMap((p) => [Number(p.equity), Number(p.balance)]).filter(Number.isFinite);
-    const minV = Math.min(...values);
-    const maxV = Math.max(...values);
-    const span = maxV - minV || 1;
+  const pnl = useMemo(() => {
+    const currentEquity = Number(snapshot?.account?.equity ?? NaN);
+    const currentBalance = Number(snapshot?.account?.balance ?? NaN);
+    const lastEq = Number.isFinite(currentEquity)
+      ? currentEquity
+      : performancePoints.length
+        ? performancePoints[performancePoints.length - 1].equity
+        : STARTING_BALANCE;
+    const lastBal = Number.isFinite(currentBalance)
+      ? currentBalance
+      : performancePoints.length
+        ? performancePoints[performancePoints.length - 1].balance
+        : STARTING_BALANCE;
 
-    const xFor = (i: number) => {
-      if (points.length === 1) return width / 2;
-      return padX + (i / (points.length - 1)) * (width - padX * 2);
+    const latestTs = snapshot?.timestamp_utc ? new Date(snapshot.timestamp_utc) : new Date();
+    const dayStart = new Date(Date.UTC(latestTs.getUTCFullYear(), latestTs.getUTCMonth(), latestTs.getUTCDate()));
+    const weekStart = startOfWeekUtc(latestTs);
+    const monthStart = startOfMonthUtc(latestTs);
+
+    const firstAtOrAfter = (start: Date): PerfPoint | null => {
+      const ms = start.getTime();
+      return performancePoints.find((p) => new Date(p.timestamp_utc).getTime() >= ms) || null;
     };
-    const yFor = (v: number) => {
-      const normalized = (v - minV) / span;
-      return height - padY - normalized * (height - padY * 2);
-    };
 
-    const toPath = (series: Array<{ x: number; y: number }>) =>
-      series.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
-
-    const equityPath = toPath(points.map((p, i) => ({ x: xFor(i), y: yFor(Number(p.equity)) })));
-    const balancePath = toPath(points.map((p, i) => ({ x: xFor(i), y: yFor(Number(p.balance)) })));
+    const dayBase = firstAtOrAfter(dayStart)?.equity ?? STARTING_BALANCE;
+    const weekBase = firstAtOrAfter(weekStart)?.equity ?? STARTING_BALANCE;
+    const monthBase = firstAtOrAfter(monthStart)?.equity ?? STARTING_BALANCE;
 
     return {
-      equityPath,
-      balancePath,
-      minY: minV,
-      maxY: maxV,
+      day: lastEq - dayBase,
+      week: lastEq - weekBase,
+      month: lastEq - monthBase,
+      realized: lastBal - STARTING_BALANCE,
+      net: lastEq - STARTING_BALANCE,
+      currentEquity: lastEq,
+      currentBalance: lastBal,
+      dayBase,
+      weekBase,
+      monthBase,
     };
-  }, [snapshot]);
+  }, [snapshot, performancePoints]);
 
-  const pnlBook = useMemo(() => {
-    const points = (snapshot?.performance_history || [])
-      .map((p) => ({
-        timestamp_utc: String(p.timestamp_utc || ""),
-        balance: Number(p.balance),
-      }))
-      .filter((p) => Number.isFinite(p.balance) && p.timestamp_utc)
-      .sort((a, b) => a.timestamp_utc.localeCompare(b.timestamp_utc));
-
-    if (!points.length) {
-      return {
-        dayPnl: 0,
-        weekPnl: 0,
-        monthPnl: 0,
-        dayRows: [] as PnlRow[],
-        weekRows: [] as PnlRow[],
-        monthName: "",
-        monthCells: [] as CalendarCell[],
-      };
-    }
-
+  const pnlBookRows = useMemo(() => {
     const dayClose = new Map<string, number>();
-    for (const p of points) {
-      dayClose.set(dateKeyUtc(p.timestamp_utc), p.balance);
+    for (const p of performancePoints) {
+      dayClose.set(dateKeyUtc(p.timestamp_utc), p.equity);
     }
-
     const dayKeys = Array.from(dayClose.keys()).sort();
-    const dayRowsAll: Array<{ key: string; pnl: number }> = [];
-    let prevClose: number | null = null;
-    for (const key of dayKeys) {
-      const close = dayClose.get(key)!;
-      const pnl = prevClose === null ? 0 : close - prevClose;
-      dayRowsAll.push({ key, pnl });
-      prevClose = close;
+    const dayRows = dayKeys.slice(-30).reverse().map((k) => ({ label: k, pnl: (dayClose.get(k) || 0) - STARTING_BALANCE }));
+
+    const weekMap = new Map<string, number>();
+    for (const [k, v] of dayClose.entries()) {
+      const wk = dateKeyUtc(startOfWeekUtc(new Date(`${k}T00:00:00.000Z`)).toISOString());
+      weekMap.set(wk, v);
     }
-
-    const weekClose = new Map<string, number>();
-    for (const key of dayKeys) {
-      const d = new Date(`${key}T00:00:00.000Z`);
-      const wk = fmtDateUtc(startOfWeekUtc(d));
-      weekClose.set(wk, dayClose.get(key)!);
-    }
-
-    const weekKeys = Array.from(weekClose.keys()).sort();
-    const weekRowsAll: Array<{ key: string; pnl: number }> = [];
-    let prevWeekClose: number | null = null;
-    for (const wk of weekKeys) {
-      const close = weekClose.get(wk)!;
-      const pnl = prevWeekClose === null ? 0 : close - prevWeekClose;
-      weekRowsAll.push({ key: wk, pnl });
-      prevWeekClose = close;
-    }
-
-    const monthClose = new Map<string, number>();
-    for (const key of dayKeys) {
-      const d = new Date(`${key}T00:00:00.000Z`);
-      const mk = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-      monthClose.set(mk, dayClose.get(key)!);
-    }
-
-    const monthKeys = Array.from(monthClose.keys()).sort();
-    let prevMonthClose: number | null = null;
-    const monthPnlMap = new Map<string, number>();
-    for (const mk of monthKeys) {
-      const close = monthClose.get(mk)!;
-      const pnl = prevMonthClose === null ? 0 : close - prevMonthClose;
-      monthPnlMap.set(mk, pnl);
-      prevMonthClose = close;
-    }
-
-    const lastKey = dayKeys[dayKeys.length - 1];
-    const now = new Date(`${lastKey}T00:00:00.000Z`);
-    const currentWeek = fmtDateUtc(startOfWeekUtc(now));
-    const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-
-    const dayPnl = dayRowsAll[dayRowsAll.length - 1]?.pnl ?? 0;
-    const weekPnl = weekRowsAll.find((w) => w.key === currentWeek)?.pnl ?? 0;
-    const monthPnl = monthPnlMap.get(currentMonth) ?? 0;
-
-    const dayRows: PnlRow[] = dayRowsAll
-      .slice(-21)
+    const weekRows = Array.from(weekMap.keys())
+      .sort()
+      .slice(-12)
       .reverse()
-      .map((d) => ({ label: d.key, pnl: d.pnl }));
+      .map((wk) => ({ label: `Week ${wk}`, pnl: (weekMap.get(wk) || 0) - STARTING_BALANCE }));
 
-    const weekRows: PnlRow[] = weekRowsAll
-      .slice(-16)
-      .reverse()
-      .map((w) => {
-        const ws = new Date(`${w.key}T00:00:00.000Z`);
-        const we = addDaysUtc(ws, 6);
-        return {
-          label: `${fmtDateUtc(ws)} to ${fmtDateUtc(we)}`,
-          pnl: w.pnl,
-        };
-      });
-
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+    const latest = snapshot?.timestamp_utc ? new Date(snapshot.timestamp_utc) : new Date();
+    const monthStart = startOfMonthUtc(latest);
+    const monthEnd = new Date(Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth() + 1, 0));
     const gridStart = startOfWeekUtc(monthStart);
-    const weekEndDay = monthEnd.getUTCDay();
-    const gridEnd = addDaysUtc(monthEnd, weekEndDay === 0 ? 0 : 7 - weekEndDay);
-    const monthCells: CalendarCell[] = [];
+    const gridEnd = addDaysUtc(monthEnd, monthEnd.getUTCDay() === 0 ? 0 : 7 - monthEnd.getUTCDay());
+    const monthCells: Array<{ key: string; day: number; pnl: number | null; isCurrentMonth: boolean }> = [];
+
     for (let d = new Date(gridStart); d <= gridEnd; d = addDaysUtc(d, 1)) {
-      const key = fmtDateUtc(d);
-      const inCurrentMonth = d.getUTCMonth() === monthStart.getUTCMonth() && d.getUTCFullYear() === monthStart.getUTCFullYear();
-      const row = dayRowsAll.find((r) => r.key === key);
+      const key = dateKeyUtc(d.toISOString());
       monthCells.push({
         key,
         day: d.getUTCDate(),
-        pnl: row ? row.pnl : null,
-        isCurrentMonth: inCurrentMonth,
+        pnl: dayClose.has(key) ? (dayClose.get(key) || 0) - STARTING_BALANCE : null,
+        isCurrentMonth: d.getUTCMonth() === latest.getUTCMonth() && d.getUTCFullYear() === latest.getUTCFullYear(),
       });
     }
 
-    const monthName = now.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-
     return {
-      dayPnl,
-      weekPnl,
-      monthPnl,
       dayRows,
       weekRows,
-      monthName,
       monthCells,
+      monthName: latest.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
     };
-  }, [snapshot]);
+  }, [performancePoints, snapshot]);
 
-  const signalType = (s: Signal) => {
-    const side = String(s.side || "").toLowerCase();
-    if (side === "buy_limit") return "BUY LIMIT";
-    if (side === "sell_limit") return "SELL LIMIT";
-    if (side === "buy") return "BUY";
-    if (side === "sell") return "SELL";
-    return side.toUpperCase() || "UNKNOWN";
-  };
+  const performance = useMemo(() => {
+    const points = performancePoints.slice(-120);
+    if (!points.length) return { equityPath: "", balancePath: "", minY: 0, maxY: 1 };
+
+    const w = 920;
+    const h = 240;
+    const px = 16;
+    const py = 14;
+    const values = points.flatMap((p) => [p.equity, p.balance]);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+
+    const xFor = (i: number) => (points.length === 1 ? w / 2 : px + (i / (points.length - 1)) * (w - px * 2));
+    const yFor = (v: number) => h - py - ((v - min) / span) * (h - py * 2);
+    const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
+
+    return {
+      equityPath: pathFor(points.map((p) => p.equity)),
+      balancePath: pathFor(points.map((p) => p.balance)),
+      minY: min,
+      maxY: max,
+    };
+  }, [performancePoints]);
+
+  const lastUpdateAge = useMemo(() => {
+    if (!snapshot?.timestamp_utc) return "no data";
+    const age = Math.max(0, Math.floor((nowMs - new Date(snapshot.timestamp_utc).getTime()) / 1000));
+    return `${age}s ago`;
+  }, [snapshot, nowMs]);
 
   const saveEmail = async () => {
     setSaveMsg("");
@@ -330,308 +294,235 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    if (res.ok) {
-      setSaveMsg("Email saved. Alerts will be sent here.");
-      return;
-    }
-    setSaveMsg("Failed to save email. Check format or KV configuration.");
+    setSaveMsg(res.ok ? "Email saved." : "Failed to save email.");
   };
 
   return (
     <main>
-      <h1>DAvynci Live Signals</h1>
-      <p>Updated: {snapshot?.timestamp_utc || "-"}</p>
+      <section className="hero">
+        <h1>DAvynci Live Trading Board</h1>
+        <p>Live refresh: 1s | Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
+      </section>
 
-      <div className="card">
-        <h3>Live Status</h3>
-        <table>
-          <tbody>
-            <tr><td>Account</td><td>{snapshot?.account?.login || "-"}</td></tr>
-            <tr><td>Server</td><td>{snapshot?.account?.server || "-"}</td></tr>
-            <tr><td>Balance</td><td>{snapshot?.account?.balance ?? "-"}</td></tr>
-            <tr><td>Equity</td><td>{snapshot?.account?.equity ?? "-"}</td></tr>
-            <tr><td>Free Margin</td><td>{snapshot?.account?.margin_free ?? "-"}</td></tr>
-            <tr><td>Dry Run</td><td>{String(snapshot?.dry_run ?? false)}</td></tr>
-            <tr><td>Halted</td><td>{String(snapshot?.halted ?? false)}</td></tr>
-            <tr><td>Halt Reason</td><td>{snapshot?.halt_reason || "-"}</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <section className="tabs">
+        {([
+          ["overview", "Overview"],
+          ["pnl", "PnL Book"],
+          ["signals", "Signals"],
+          ["positions", "Positions"],
+          ["events", "Events"],
+          ["logs", "Logs"],
+          ["diagnostics", "Diagnostics"],
+        ] as Array<[MainTab, string]>).map(([k, label]) => (
+          <button key={k} className={`tab-btn ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>
+            {label}
+          </button>
+        ))}
+      </section>
 
-      <div className="card">
-        <h3>Bot Performance</h3>
-        {!(snapshot?.performance_history || []).length ? (
-          <p>Waiting for enough account snapshots to draw performance.</p>
-        ) : (
-          <>
-            <svg viewBox="0 0 920 240" width="100%" height="240" role="img" aria-label="Bot equity and balance history">
-              <rect x="0" y="0" width="920" height="240" fill="#0f172a" rx="8" />
-              <path d={performance.balancePath} fill="none" stroke="#e2e8f0" strokeWidth="2" opacity="0.9" />
-              <path d={performance.equityPath} fill="none" stroke="#22d3ee" strokeWidth="3" />
-            </svg>
-            <p style={{ marginTop: 8 }}>
-              Range: {performance.minY.toFixed(2)} to {performance.maxY.toFixed(2)}
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="card">
-        <h3>PnL Book</h3>
-        <div className="pnl-summary">
-          <div>
-            <div className="muted">Day PnL</div>
-            <div className={pnlBook.dayPnl >= 0 ? "pnl up" : "pnl down"}>{pnlBook.dayPnl.toFixed(2)}</div>
+      {tab === "overview" ? (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi"><span>Start Balance</span><strong>{fmtMoney(STARTING_BALANCE)}</strong></div>
+            <div className="kpi"><span>Balance</span><strong>{fmtMoney(pnl.currentBalance)}</strong></div>
+            <div className="kpi"><span>Equity</span><strong>{fmtMoney(pnl.currentEquity)}</strong></div>
+            <div className="kpi"><span>Today Trades</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
+            <div className="kpi"><span>Open PnL</span><strong className={floatingPnl >= 0 ? "up" : "down"}>{fmtMoney(floatingPnl)}</strong></div>
+            <div className="kpi"><span>Net PnL from $200</span><strong className={pnl.net >= 0 ? "up" : "down"}>{fmtMoney(pnl.net)}</strong></div>
           </div>
-          <div>
-            <div className="muted">Week PnL</div>
-            <div className={pnlBook.weekPnl >= 0 ? "pnl up" : "pnl down"}>{pnlBook.weekPnl.toFixed(2)}</div>
+
+          <div className="card">
+            <h3>Performance</h3>
+            {performance.equityPath ? (
+              <>
+                <svg viewBox="0 0 920 240" width="100%" height="240" role="img" aria-label="Equity and balance trend">
+                  <rect x="0" y="0" width="920" height="240" fill="#f8fbff" rx="10" />
+                  <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.85" />
+                  <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
+                </svg>
+                <p>Range: {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)}</p>
+              </>
+            ) : (
+              <p>Waiting for performance snapshots.</p>
+            )}
           </div>
-          <div>
-            <div className="muted">Month PnL</div>
-            <div className={pnlBook.monthPnl >= 0 ? "pnl up" : "pnl down"}>{pnlBook.monthPnl.toFixed(2)}</div>
+
+          <div className="card">
+            <h3>Email Alerts</h3>
+            <div className="row">
+              <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
+              <button className="btn" onClick={saveEmail}>Save Email</button>
+            </div>
+            {saveMsg ? <p>{saveMsg}</p> : null}
           </div>
-        </div>
+        </>
+      ) : null}
 
-        <div className="segmented">
-          <button className={`seg-btn ${pnlView === "day" ? "active" : ""}`} onClick={() => setPnlView("day")}>Day</button>
-          <button className={`seg-btn ${pnlView === "week" ? "active" : ""}`} onClick={() => setPnlView("week")}>Week</button>
-          <button className={`seg-btn ${pnlView === "month" ? "active" : ""}`} onClick={() => setPnlView("month")}>Month</button>
-        </div>
+      {tab === "pnl" ? (
+        <div className="card">
+          <h3>PnL Book</h3>
+          <div className="pnl-summary">
+            <div><div className="muted">Today</div><div className={pnl.day >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(pnl.day)}</div></div>
+            <div><div className="muted">This Week</div><div className={pnl.week >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(pnl.week)}</div></div>
+            <div><div className="muted">This Month</div><div className={pnl.month >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(pnl.month)}</div></div>
+          </div>
 
-        {pnlView === "day" ? (
-          !pnlBook.dayRows.length ? (
-            <p>Waiting for daily PnL data.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Date (UTC)</th>
-                  <th>PnL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pnlBook.dayRows.map((r) => (
-                  <tr key={r.label}>
-                    <td>{r.label}</td>
-                    <td className={r.pnl >= 0 ? "pnl up" : "pnl down"}>{r.pnl.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        ) : null}
+          <div className="method">
+            <div><strong>Transparent Formula</strong></div>
+            <div>Day = Current Equity - Day Start Equity ({fmtMoney(pnl.currentEquity)} - {fmtMoney(pnl.dayBase)})</div>
+            <div>Week = Current Equity - Week Start Equity ({fmtMoney(pnl.currentEquity)} - {fmtMoney(pnl.weekBase)})</div>
+            <div>Month = Current Equity - Month Start Equity ({fmtMoney(pnl.currentEquity)} - {fmtMoney(pnl.monthBase)})</div>
+            <div>Realized since $200 = Balance - 200 ({fmtMoney(pnl.currentBalance)} - {fmtMoney(STARTING_BALANCE)}) = {fmtMoney(pnl.realized)}</div>
+          </div>
 
-        {pnlView === "week" ? (
-          !pnlBook.weekRows.length ? (
-            <p>Waiting for weekly PnL data.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Week (UTC)</th>
-                  <th>PnL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pnlBook.weekRows.map((r) => (
-                  <tr key={r.label}>
-                    <td>{r.label}</td>
-                    <td className={r.pnl >= 0 ? "pnl up" : "pnl down"}>{r.pnl.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        ) : null}
+          <div className="segmented">
+            <button className={`seg-btn ${pnlView === "day" ? "active" : ""}`} onClick={() => setPnlView("day")}>Day</button>
+            <button className={`seg-btn ${pnlView === "week" ? "active" : ""}`} onClick={() => setPnlView("week")}>Week</button>
+            <button className={`seg-btn ${pnlView === "month" ? "active" : ""}`} onClick={() => setPnlView("month")}>Month</button>
+          </div>
 
-        {pnlView === "month" ? (
-          !pnlBook.monthCells.length ? (
-            <p>Waiting for monthly calendar data.</p>
-          ) : (
+          {pnlView === "day" ? (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Date (UTC)</th><th>Equity vs $200</th></tr></thead>
+                <tbody>
+                  {pnlBookRows.dayRows.map((r) => (
+                    <tr key={r.label}><td>{r.label}</td><td className={r.pnl >= 0 ? "up" : "down"}>{fmtMoney(r.pnl)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {pnlView === "week" ? (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Week</th><th>Equity vs $200</th></tr></thead>
+                <tbody>
+                  {pnlBookRows.weekRows.map((r) => (
+                    <tr key={r.label}><td>{r.label}</td><td className={r.pnl >= 0 ? "up" : "down"}>{fmtMoney(r.pnl)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {pnlView === "month" ? (
             <>
-              <p>{pnlBook.monthName} (UTC)</p>
-              <div className="calendar-head">
-                <div>Mon</div>
-                <div>Tue</div>
-                <div>Wed</div>
-                <div>Thu</div>
-                <div>Fri</div>
-                <div>Sat</div>
-                <div>Sun</div>
-              </div>
+              <p>{pnlBookRows.monthName} (UTC)</p>
+              <div className="calendar-head"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
               <div className="calendar-grid">
-                {pnlBook.monthCells.map((c) => (
+                {pnlBookRows.monthCells.map((c) => (
                   <div key={c.key} className={`calendar-cell ${c.isCurrentMonth ? "" : "other-month"}`}>
                     <div className="calendar-day">{c.day}</div>
-                    {c.pnl === null ? <div className="muted">-</div> : <div className={c.pnl >= 0 ? "pnl up" : "pnl down"}>{c.pnl.toFixed(2)}</div>}
+                    {c.pnl === null ? <div className="muted">-</div> : <div className={c.pnl >= 0 ? "up" : "down"}>{fmtMoney(c.pnl)}</div>}
                   </div>
                 ))}
               </div>
             </>
-          )
-        ) : null}
-      </div>
-
-      <div className="card">
-        <h3>Guard State</h3>
-        <table>
-          <tbody>
-            <tr><td>Trades Today</td><td>{snapshot?.guard_state?.today_opened_trades ?? 0}</td></tr>
-            <tr><td>Consecutive Losses</td><td>{snapshot?.guard_state?.today_consecutive_losses ?? 0}</td></tr>
-            <tr><td>MT5 Failure Streak</td><td>{snapshot?.guard_state?.mt5_failure_streak ?? 0}</td></tr>
-            <tr><td>Stale Data Streak</td><td>{snapshot?.guard_state?.stale_data_streak ?? 0}</td></tr>
-            <tr><td>Unhandled Error Streak</td><td>{snapshot?.guard_state?.unhandled_error_streak ?? 0}</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div className="card">
-        <h3>Email Alerts</h3>
-        <p>Set the email that will receive BUY/SELL and LIMIT signal alerts with pair, lot, TP, and SL.</p>
-        <div className="row">
-          <input
-            className="input"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your@email.com"
-          />
-          <button className="btn" onClick={saveEmail}>Save Email</button>
+          ) : null}
         </div>
-        {saveMsg ? <p>{saveMsg}</p> : null}
-      </div>
+      ) : null}
 
-      <div className="card">
-        <h3>Active Trade Calls</h3>
-        {active.length === 0 ? (
-          <p>No active BUY/SELL/LIMIT signal now.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Signal</th>
-                <th>Lot</th>
-                <th>SL</th>
-                <th>TP</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {active.map((s, i) => (
-                <tr key={`${s.symbol}-${i}`}>
-                  <td>{s.symbol}</td>
-                  <td>
-                    <span className={`badge ${String(s.side).toLowerCase().startsWith("buy") ? "buy" : "sell"}`}>{signalType(s)}</span>
-                  </td>
-                  <td>{s.lot ?? ""}</td>
-                  <td>{s.sl ?? ""}</td>
-                  <td>{s.tp ?? ""}</td>
-                  <td>{Number(s.score || 0).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {tab === "signals" ? (
+        <div className="card">
+          <h3>Active Trade Calls</h3>
+          {activeSignals.length === 0 ? <p>No active signal now.</p> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Symbol</th><th>Signal</th><th>Lot</th><th>SL</th><th>TP</th><th>Score</th></tr></thead>
+              <tbody>
+                {activeSignals.map((s, i) => (
+                  <tr key={`${s.symbol}-${i}`}>
+                    <td>{s.symbol}</td>
+                    <td><span className={`badge ${String(s.side).toLowerCase().startsWith("buy") ? "buy" : "sell"}`}>{signalType(s)}</span></td>
+                    <td>{s.lot}</td><td>{s.sl ?? ""}</td><td>{s.tp ?? ""}</td><td>{Number(s.score || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+        </div>
+      ) : null}
 
-      <div className="card">
-        <h3>All Signal Diagnostics</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Status</th>
-              <th>Reason</th>
-              <th>Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(snapshot?.signals || []).map((s, i) => (
-              <tr key={`${s.symbol}-d-${i}`}>
-                <td>{s.symbol}</td>
-                <td>{s.status}</td>
-                <td>{s.reason}</td>
-                <td>{Number(s.score || 0).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {tab === "positions" ? (
+        <div className="card">
+          <h3>Open Positions</h3>
+          {!(snapshot?.bot_positions || []).length ? <p>No open positions.</p> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Pair</th><th>Type</th><th>Lot</th><th>Entry</th><th>SL</th><th>TP</th><th>PnL</th></tr></thead>
+              <tbody>
+                {(snapshot?.bot_positions || []).map((p) => (
+                  <tr key={p.ticket}><td>{p.symbol}</td><td>{String(p.type).toUpperCase()}</td><td>{p.volume}</td><td>{p.price_open}</td><td>{p.sl}</td><td>{p.tp}</td><td className={p.profit >= 0 ? "up" : "down"}>{fmtMoney(Number(p.profit || 0))}</td></tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+        </div>
+      ) : null}
 
-      <div className="card">
-        <h3>Open Bot Positions</h3>
-        {!(snapshot?.bot_positions || []).length ? (
-          <p>No open positions.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Pair</th>
-                <th>Type</th>
-                <th>Lot</th>
-                <th>Entry</th>
-                <th>SL</th>
-                <th>TP</th>
-                <th>PnL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(snapshot?.bot_positions || []).map((p) => (
-                <tr key={p.ticket}>
-                  <td>{p.symbol}</td>
-                  <td>{String(p.type).toUpperCase()}</td>
-                  <td>{p.volume}</td>
-                  <td>{p.price_open}</td>
-                  <td>{p.sl}</td>
-                  <td>{p.tp}</td>
-                  <td>{p.profit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {tab === "events" ? (
+        <div className="card">
+          <h3>Recent Events</h3>
+          {!(snapshot?.recent_events || []).length ? <p>No events yet.</p> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Time</th><th>Type</th><th>Pair</th><th>Details</th></tr></thead>
+              <tbody>
+                {(snapshot?.recent_events || []).slice().reverse().map((e, i) => (
+                  <tr key={`${e.timestamp_utc}-${i}`}><td>{e.timestamp_utc}</td><td>{e.event_type}</td><td>{e.symbol}</td><td>{e.details}</td></tr>
+                ))}
+              </tbody>
+            </table></div>
+          )}
+        </div>
+      ) : null}
 
-      <div className="card">
-        <h3>Recent Events</h3>
-        {!(snapshot?.recent_events || []).length ? (
-          <p>No events yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Type</th>
-                <th>Pair</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(snapshot?.recent_events || []).slice().reverse().map((e, i) => (
-                <tr key={`${e.timestamp_utc}-${i}`}>
-                  <td>{e.timestamp_utc}</td>
-                  <td>{e.event_type}</td>
-                  <td>{e.symbol}</td>
-                  <td>{e.details}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {tab === "logs" ? (
+        <div className="card">
+          <h3>Recent Logs</h3>
+          {!(snapshot?.recent_logs || []).length ? <p>No logs yet.</p> : <pre className="log-box">{(snapshot?.recent_logs || []).join("\n")}</pre>}
+        </div>
+      ) : null}
 
-      <div className="card">
-        <h3>Recent Logs</h3>
-        {!(snapshot?.recent_logs || []).length ? (
-          <p>No logs yet.</p>
-        ) : (
-          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-            {(snapshot?.recent_logs || []).join("\n")}
-          </pre>
-        )}
-      </div>
+      {tab === "diagnostics" ? (
+        <>
+          <div className="card">
+            <h3>Live Status</h3>
+            <div className="table-wrap"><table><tbody>
+              <tr><td>Account</td><td>{snapshot?.account?.login || "-"}</td></tr>
+              <tr><td>Server</td><td>{snapshot?.account?.server || "-"}</td></tr>
+              <tr><td>Balance</td><td>{fmtMoney(Number(snapshot?.account?.balance || 0))}</td></tr>
+              <tr><td>Equity</td><td>{fmtMoney(Number(snapshot?.account?.equity || 0))}</td></tr>
+              <tr><td>Free Margin</td><td>{fmtMoney(Number(snapshot?.account?.margin_free || 0))}</td></tr>
+              <tr><td>Dry Run</td><td>{String(snapshot?.dry_run ?? false)}</td></tr>
+              <tr><td>Halted</td><td>{String(snapshot?.halted ?? false)}</td></tr>
+              <tr><td>Halt Reason</td><td>{snapshot?.halt_reason || "-"}</td></tr>
+            </tbody></table></div>
+          </div>
+
+          <div className="card">
+            <h3>Guard State</h3>
+            <div className="table-wrap"><table><tbody>
+              <tr><td>Trades Today</td><td>{snapshot?.guard_state?.today_opened_trades ?? 0}</td></tr>
+              <tr><td>Consecutive Losses</td><td>{snapshot?.guard_state?.today_consecutive_losses ?? 0}</td></tr>
+              <tr><td>MT5 Failure Streak</td><td>{snapshot?.guard_state?.mt5_failure_streak ?? 0}</td></tr>
+              <tr><td>Stale Data Streak</td><td>{snapshot?.guard_state?.stale_data_streak ?? 0}</td></tr>
+              <tr><td>Unhandled Error Streak</td><td>{snapshot?.guard_state?.unhandled_error_streak ?? 0}</td></tr>
+            </tbody></table></div>
+          </div>
+
+          <div className="card">
+            <h3>All Signal Diagnostics</h3>
+            <div className="table-wrap"><table>
+              <thead><tr><th>Symbol</th><th>Status</th><th>Reason</th><th>Score</th></tr></thead>
+              <tbody>
+                {(snapshot?.signals || []).map((s, i) => (
+                  <tr key={`${s.symbol}-d-${i}`}><td>{s.symbol}</td><td>{s.status}</td><td>{s.reason}</td><td>{Number(s.score || 0).toFixed(2)}</td></tr>
+                ))}
+              </tbody>
+            </table></div>
+          </div>
+        </>
+      ) : null}
     </main>
   );
 }

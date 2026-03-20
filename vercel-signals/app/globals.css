@@ -4,27 +4,96 @@
 
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  background: #0b1220;
-  color: #e6edf7;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background:
+    radial-gradient(circle at 10% 10%, #fdf1da 0%, #f8fbff 42%),
+    radial-gradient(circle at 90% 20%, #d8ecff 0%, #f8fbff 40%);
+  color: #1f2b3f;
 }
 
 main {
-  max-width: 980px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px 14px 32px;
 }
 
 h1 {
-  margin: 0 0 8px;
+  margin: 0;
+  font-size: clamp(24px, 4vw, 36px);
+}
+
+h3 {
+  margin: 0 0 10px;
+}
+
+.hero {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #d9e6f5;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.hero p {
+  margin: 8px 0 0;
+  color: #4a5f7b;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+}
+
+.tab-btn {
+  border: 1px solid #cfe0f3;
+  border-radius: 999px;
+  background: #fff;
+  color: #214061;
+  white-space: nowrap;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #1f69d4;
+  color: #fff;
+  border-color: #1f69d4;
 }
 
 .card {
-  background: #121c30;
-  border: 1px solid #26314a;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d8e6f5;
   border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.kpi {
+  background: #ffffff;
+  border: 1px solid #d6e4f3;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.kpi span {
+  display: block;
+  color: #58708e;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.kpi strong {
+  font-size: 20px;
 }
 
 .badge {
@@ -32,28 +101,35 @@ h1 {
   border-radius: 999px;
   font-size: 12px;
   padding: 4px 10px;
-  margin-right: 6px;
 }
 
 .buy {
-  background: #083;
-  color: #d4ffe8;
+  background: #e7faef;
+  color: #0e8a54;
+  border: 1px solid #bbebcf;
 }
 
 .sell {
-  background: #a11;
-  color: #ffe3e3;
+  background: #ffecee;
+  color: #b9303d;
+  border: 1px solid #ffd1d7;
+}
+
+.table-wrap {
+  overflow-x: auto;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 620px;
 }
 
-th, td {
-  border-bottom: 1px solid #24314a;
+th,
+td {
+  border-bottom: 1px solid #e4edf7;
   text-align: left;
-  padding: 10px 8px;
+  padding: 9px 7px;
   font-size: 14px;
 }
 
@@ -67,23 +143,34 @@ th, td {
   flex: 1;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid #34425f;
-  background: #0f1a2e;
-  color: #e6edf7;
+  border: 1px solid #c9d9ec;
+  background: #ffffff;
+  color: #243549;
 }
 
 .btn {
   padding: 10px 14px;
-  border: 1px solid #3760d9;
-  background: #2d57d2;
-  color: #ffffff;
+  border: 1px solid #1f69d4;
+  background: #1f69d4;
+  color: #fff;
   border-radius: 10px;
   cursor: pointer;
 }
 
 .muted {
-  color: #9fb0cf;
+  color: #67809f;
   font-size: 12px;
+}
+
+.method {
+  background: #f6fbff;
+  border: 1px solid #d6e7f8;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 12px;
+  color: #355272;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .pnl-summary {
@@ -94,29 +181,29 @@ th, td {
 }
 
 .pnl-summary > div {
-  background: #0f1a2e;
-  border: 1px solid #2a3b5a;
+  background: #fff;
+  border: 1px solid #d6e4f3;
   border-radius: 10px;
   padding: 10px;
 }
 
 .pnl {
   margin-top: 3px;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
 }
 
 .up {
-  color: #55d486;
+  color: #0b8f5d;
 }
 
 .down {
-  color: #ff7a88;
+  color: #c43445;
 }
 
 .segmented {
   display: inline-flex;
-  border: 1px solid #314564;
+  border: 1px solid #cdddf0;
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 12px;
@@ -124,14 +211,14 @@ th, td {
 
 .seg-btn {
   border: 0;
-  background: #0f1a2e;
-  color: #d6e1f7;
+  background: #fff;
+  color: #2f4f73;
   padding: 8px 12px;
   cursor: pointer;
 }
 
 .seg-btn.active {
-  background: #264fcb;
+  background: #1f69d4;
   color: #fff;
 }
 
@@ -144,35 +231,67 @@ th, td {
 
 .calendar-head {
   margin-bottom: 8px;
-  color: #afc0e2;
+  color: #58708e;
   font-size: 12px;
 }
 
 .calendar-cell {
-  background: #0f1a2e;
-  border: 1px solid #2a3b5a;
+  background: #fff;
+  border: 1px solid #d6e4f3;
   border-radius: 10px;
   padding: 8px;
-  min-height: 70px;
+  min-height: 68px;
 }
 
 .calendar-cell.other-month {
-  opacity: 0.45;
+  opacity: 0.48;
 }
 
 .calendar-day {
-  color: #b8c8e8;
+  color: #4d6480;
   font-size: 12px;
   margin-bottom: 4px;
 }
 
+.log-box {
+  white-space: pre-wrap;
+  margin: 0;
+  background: #fbfdff;
+  border: 1px solid #dbe8f6;
+  border-radius: 10px;
+  padding: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+@media (max-width: 820px) {
+  .kpi-grid,
+  .pnl-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
+  main {
+    padding: 14px 10px 22px;
+  }
+
+  .kpi-grid,
   .pnl-summary {
     grid-template-columns: 1fr;
   }
 
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  table {
+    min-width: 540px;
+  }
+
   .calendar-cell {
-    min-height: 58px;
+    min-height: 56px;
     padding: 6px;
   }
 }

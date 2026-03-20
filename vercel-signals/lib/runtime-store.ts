@@ -6,11 +6,23 @@ type PerformancePoint = {
   balance: number;
 };
 
+export type TradingDiaryEntry = {
+  trade_id: string;
+  created_at_utc: string;
+  updated_at_utc: string;
+  setup: string;
+  emotion: string;
+  mistakes: string;
+  lesson: string;
+  rating: number;
+};
+
 type RuntimeStore = {
   snapshot: SignalSnapshot | null;
   lastEmailDigest: string;
   subscriberEmail: string;
   performanceHistory: PerformancePoint[];
+  diary: Record<string, TradingDiaryEntry>;
 };
 
 declare global {
@@ -31,6 +43,7 @@ export function getStore(): RuntimeStore {
       lastEmailDigest: "",
       subscriberEmail: "",
       performanceHistory: [],
+      diary: {},
     };
   }
   return globalThis.__davynciStore__;
@@ -81,4 +94,26 @@ export function getSubscriberEmail(): string {
 
 export function setSubscriberEmail(email: string): void {
   getStore().subscriberEmail = email;
+}
+
+export function getDiary(): Record<string, TradingDiaryEntry> {
+  return getStore().diary;
+}
+
+export function setDiaryEntry(tradeId: string, payload: Omit<TradingDiaryEntry, "trade_id" | "created_at_utc" | "updated_at_utc">): TradingDiaryEntry {
+  const store = getStore();
+  const existing = store.diary[tradeId];
+  const now = new Date().toISOString();
+  const next: TradingDiaryEntry = {
+    trade_id: tradeId,
+    created_at_utc: existing?.created_at_utc || now,
+    updated_at_utc: now,
+    setup: payload.setup,
+    emotion: payload.emotion,
+    mistakes: payload.mistakes,
+    lesson: payload.lesson,
+    rating: payload.rating,
+  };
+  store.diary[tradeId] = next;
+  return next;
 }

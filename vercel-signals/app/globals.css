@@ -538,6 +538,66 @@ td {
   overflow: auto;
 }
 
+.diary-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+}
+
+.diary-list {
+  max-height: 520px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diary-item {
+  border: 1px solid #d7e5f6;
+  background: #fff;
+  color: #223d5b;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.diary-item.active {
+  border-color: #7ca9ec;
+  background: #eef4ff;
+}
+
+.diary-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diary-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: #4e6887;
+}
+
+.diary-editor textarea,
+.diary-editor input {
+  border: 1px solid #cfdff2;
+  background: #fff;
+  border-radius: 10px;
+  color: #1d3149;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.diary-editor textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
 @media (max-width: 820px) {
   .kpi-grid,
   .pnl-summary {
@@ -592,5 +652,13 @@ td {
   .calendar-cell {
     min-height: 56px;
     padding: 6px;
+  }
+
+  .diary-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .diary-list {
+    max-height: 240px;
   }
 }

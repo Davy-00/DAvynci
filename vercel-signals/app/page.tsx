@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const STARTING_BALANCE = 200;
 
 type PnlView = "day" | "week" | "month";
-type MainTab = "overview" | "analytics" | "pnl" | "signals" | "positions" | "trades" | "events" | "logs" | "diagnostics";
+type MainTab = "overview" | "analytics" | "pnl" | "signals" | "positions" | "trades" | "diary" | "events" | "logs" | "diagnostics";
 type ChartRange = "15m" | "1h" | "4h" | "12h" | "1d" | "3d" | "1w" | "all";
 type ChartResolution = "raw" | "1m" | "5m";
 type ChartSmoothing = "none" | "ema3" | "ema8";
@@ -81,6 +81,16 @@ type Snapshot = {
 };
 
 type PerfPoint = { timestamp_utc: string; equity: number; balance: number };
+type DiaryEntry = {
+  trade_id: string;
+  created_at_utc: string;
+  updated_at_utc: string;
+  setup: string;
+  emotion: string;
+  mistakes: string;
+  lesson: string;
+  rating: number;
+};
 
 function ema(values: number[], span: number): number[] {
   if (values.length === 0) return [];
@@ -201,6 +211,10 @@ export default function HomePage() {
   const [showBalanceSeries, setShowBalanceSeries] = useState(true);
   const [showNetSeries, setShowNetSeries] = useState(false);
   const [showCloseMarkers, setShowCloseMarkers] = useState(true);
+  const [diary, setDiary] = useState<Record<string, DiaryEntry>>({});
+  const [selectedTradeId, setSelectedTradeId] = useState("");
+  const [draft, setDraft] = useState({ setup: "", emotion: "", mistakes: "", lesson: "", rating: 0 });
+  const [diaryMsg, setDiaryMsg] = useState("");
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
   const fingerprintRef = useRef("");
@@ -256,6 +270,19 @@ export default function HomePage() {
       clearInterval(poll);
       clearInterval(clock);
       if (es) es.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadDiary = async () => {
+      const res = await fetch("/api/diary", { cache: "no-store" });
+      const data = await res.json();
+      if (mounted) setDiary(data?.entries || {});
+    };
+    loadDiary();
+    return () => {
+      mounted = false;
     };
   }, []);
 
@@ -521,6 +548,44 @@ export default function HomePage() {
     setSaveMsg(res.ok ? "Email saved." : "Failed to save email.");
   };
 
+  const closedTrades = snapshot?.closed_trades || [];
+
+  useEffect(() => {
+    if (!closedTrades.length) return;
+    if (!selectedTradeId) {
+      setSelectedTradeId(String(closedTrades[0].position_id));
+    }
+  }, [closedTrades, selectedTradeId]);
+
+  useEffect(() => {
+    if (!selectedTradeId) return;
+    const existing = diary[selectedTradeId];
+    setDraft({
+      setup: existing?.setup || "",
+      emotion: existing?.emotion || "",
+      mistakes: existing?.mistakes || "",
+      lesson: existing?.lesson || "",
+      rating: Number(existing?.rating || 0),
+    });
+  }, [selectedTradeId, diary]);
+
+  const saveDiaryEntry = async () => {
+    if (!selectedTradeId) return;
+    setDiaryMsg("Saving...");
+    const res = await fetch("/api/diary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trade_id: selectedTradeId, ...draft }),
+    });
+    const data = await res.json();
+    if (res.ok && data?.entry) {
+      setDiary((prev) => ({ ...prev, [selectedTradeId]: data.entry }));
+      setDiaryMsg("Saved.");
+      return;
+    }
+    setDiaryMsg("Failed to save.");
+  };
+
   const uiBalance = useAnimatedNumber(pnl.currentBalance);
   const uiEquity = useAnimatedNumber(pnl.currentEquity);
   const uiOpen = useAnimatedNumber(floatingPnl);
@@ -692,6 +757,7 @@ export default function HomePage() {
           ["signals", "Signals"],
           ["positions", "Positions"],
           ["trades", "Trade History (Closed)"],
+          ["diary", "Trading Diary"],
           ["events", "Events"],
           ["logs", "Logs"],
           ["diagnostics", "Diagnostics"],
@@ -1007,6 +1073,58 @@ export default function HomePage() {
           <p className="muted" style={{ marginTop: 10 }}>
             Icons: T=TP, S=SL, R=Trailed SL, B=Break-even, M=Manual.
           </p>
+        </div>
+      ) : null}
+
+      {tab === "diary" ? (
+        <div className="card">
+          <h3>Trading Diary</h3>
+          {!closedTrades.length ? (
+            <p>No closed trades yet to journal.</p>
+          ) : (
+            <div className="diary-layout">
+              <div className="diary-list">
+                {closedTrades.slice(0, 80).map((t, i) => {
+                  const id = String(t.position_id);
+                  return (
+                    <button
+                      key={`${id}-${i}`}
+                      className={`diary-item ${selectedTradeId === id ? "active" : ""}`}
+                      onClick={() => setSelectedTradeId(id)}
+                    >
+                      <span>{t.symbol} {String(t.side).toUpperCase()}</span>
+                      <span className={Number(t.pnl || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(t.pnl || 0))}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="diary-editor">
+                <label>
+                  Setup
+                  <textarea value={draft.setup} onChange={(e) => setDraft((d) => ({ ...d, setup: e.target.value }))} placeholder="Why did I take this trade?" />
+                </label>
+                <label>
+                  Emotion
+                  <textarea value={draft.emotion} onChange={(e) => setDraft((d) => ({ ...d, emotion: e.target.value }))} placeholder="How did I feel during entry/management?" />
+                </label>
+                <label>
+                  Mistakes
+                  <textarea value={draft.mistakes} onChange={(e) => setDraft((d) => ({ ...d, mistakes: e.target.value }))} placeholder="What mistakes happened?" />
+                </label>
+                <label>
+                  Lesson
+                  <textarea value={draft.lesson} onChange={(e) => setDraft((d) => ({ ...d, lesson: e.target.value }))} placeholder="What will I do better next time?" />
+                </label>
+                <label>
+                  Trade Rating (0-5)
+                  <input type="number" min={0} max={5} step={1} value={draft.rating} onChange={(e) => setDraft((d) => ({ ...d, rating: Number(e.target.value || 0) }))} />
+                </label>
+                <button className="btn" onClick={saveDiaryEntry}>Save Diary Entry</button>
+                {diaryMsg ? <p className="muted">{diaryMsg}</p> : null}
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 

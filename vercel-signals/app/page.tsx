@@ -2,6 +2,49 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type PnlView = "day" | "week" | "month";
+
+type PnlRow = {
+  label: string;
+  pnl: number;
+};
+
+type CalendarCell = {
+  key: string;
+  day: number;
+  pnl: number | null;
+  isCurrentMonth: boolean;
+};
+
+function dateKeyUtc(ts: string): string {
+  const d = new Date(ts);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function startOfWeekUtc(date: Date): Date {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d;
+}
+
+function addDaysUtc(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function fmtDateUtc(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 type Signal = {
   symbol: string;
   status: string;
@@ -63,6 +106,7 @@ export default function HomePage() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [email, setEmail] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [pnlView, setPnlView] = useState<PnlView>("day");
 
   useEffect(() => {
     let mounted = true;
@@ -143,6 +187,133 @@ export default function HomePage() {
     };
   }, [snapshot]);
 
+  const pnlBook = useMemo(() => {
+    const points = (snapshot?.performance_history || [])
+      .map((p) => ({
+        timestamp_utc: String(p.timestamp_utc || ""),
+        balance: Number(p.balance),
+      }))
+      .filter((p) => Number.isFinite(p.balance) && p.timestamp_utc)
+      .sort((a, b) => a.timestamp_utc.localeCompare(b.timestamp_utc));
+
+    if (!points.length) {
+      return {
+        dayPnl: 0,
+        weekPnl: 0,
+        monthPnl: 0,
+        dayRows: [] as PnlRow[],
+        weekRows: [] as PnlRow[],
+        monthName: "",
+        monthCells: [] as CalendarCell[],
+      };
+    }
+
+    const dayClose = new Map<string, number>();
+    for (const p of points) {
+      dayClose.set(dateKeyUtc(p.timestamp_utc), p.balance);
+    }
+
+    const dayKeys = Array.from(dayClose.keys()).sort();
+    const dayRowsAll: Array<{ key: string; pnl: number }> = [];
+    let prevClose: number | null = null;
+    for (const key of dayKeys) {
+      const close = dayClose.get(key)!;
+      const pnl = prevClose === null ? 0 : close - prevClose;
+      dayRowsAll.push({ key, pnl });
+      prevClose = close;
+    }
+
+    const weekClose = new Map<string, number>();
+    for (const key of dayKeys) {
+      const d = new Date(`${key}T00:00:00.000Z`);
+      const wk = fmtDateUtc(startOfWeekUtc(d));
+      weekClose.set(wk, dayClose.get(key)!);
+    }
+
+    const weekKeys = Array.from(weekClose.keys()).sort();
+    const weekRowsAll: Array<{ key: string; pnl: number }> = [];
+    let prevWeekClose: number | null = null;
+    for (const wk of weekKeys) {
+      const close = weekClose.get(wk)!;
+      const pnl = prevWeekClose === null ? 0 : close - prevWeekClose;
+      weekRowsAll.push({ key: wk, pnl });
+      prevWeekClose = close;
+    }
+
+    const monthClose = new Map<string, number>();
+    for (const key of dayKeys) {
+      const d = new Date(`${key}T00:00:00.000Z`);
+      const mk = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      monthClose.set(mk, dayClose.get(key)!);
+    }
+
+    const monthKeys = Array.from(monthClose.keys()).sort();
+    let prevMonthClose: number | null = null;
+    const monthPnlMap = new Map<string, number>();
+    for (const mk of monthKeys) {
+      const close = monthClose.get(mk)!;
+      const pnl = prevMonthClose === null ? 0 : close - prevMonthClose;
+      monthPnlMap.set(mk, pnl);
+      prevMonthClose = close;
+    }
+
+    const lastKey = dayKeys[dayKeys.length - 1];
+    const now = new Date(`${lastKey}T00:00:00.000Z`);
+    const currentWeek = fmtDateUtc(startOfWeekUtc(now));
+    const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+    const dayPnl = dayRowsAll[dayRowsAll.length - 1]?.pnl ?? 0;
+    const weekPnl = weekRowsAll.find((w) => w.key === currentWeek)?.pnl ?? 0;
+    const monthPnl = monthPnlMap.get(currentMonth) ?? 0;
+
+    const dayRows: PnlRow[] = dayRowsAll
+      .slice(-21)
+      .reverse()
+      .map((d) => ({ label: d.key, pnl: d.pnl }));
+
+    const weekRows: PnlRow[] = weekRowsAll
+      .slice(-16)
+      .reverse()
+      .map((w) => {
+        const ws = new Date(`${w.key}T00:00:00.000Z`);
+        const we = addDaysUtc(ws, 6);
+        return {
+          label: `${fmtDateUtc(ws)} to ${fmtDateUtc(we)}`,
+          pnl: w.pnl,
+        };
+      });
+
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+    const gridStart = startOfWeekUtc(monthStart);
+    const weekEndDay = monthEnd.getUTCDay();
+    const gridEnd = addDaysUtc(monthEnd, weekEndDay === 0 ? 0 : 7 - weekEndDay);
+    const monthCells: CalendarCell[] = [];
+    for (let d = new Date(gridStart); d <= gridEnd; d = addDaysUtc(d, 1)) {
+      const key = fmtDateUtc(d);
+      const inCurrentMonth = d.getUTCMonth() === monthStart.getUTCMonth() && d.getUTCFullYear() === monthStart.getUTCFullYear();
+      const row = dayRowsAll.find((r) => r.key === key);
+      monthCells.push({
+        key,
+        day: d.getUTCDate(),
+        pnl: row ? row.pnl : null,
+        isCurrentMonth: inCurrentMonth,
+      });
+    }
+
+    const monthName = now.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+    return {
+      dayPnl,
+      weekPnl,
+      monthPnl,
+      dayRows,
+      weekRows,
+      monthName,
+      monthCells,
+    };
+  }, [snapshot]);
+
   const signalType = (s: Signal) => {
     const side = String(s.side || "").toLowerCase();
     if (side === "buy_limit") return "BUY LIMIT";
@@ -203,6 +374,103 @@ export default function HomePage() {
             </p>
           </>
         )}
+      </div>
+
+      <div className="card">
+        <h3>PnL Book</h3>
+        <div className="pnl-summary">
+          <div>
+            <div className="muted">Day PnL</div>
+            <div className={pnlBook.dayPnl >= 0 ? "pnl up" : "pnl down"}>{pnlBook.dayPnl.toFixed(2)}</div>
+          </div>
+          <div>
+            <div className="muted">Week PnL</div>
+            <div className={pnlBook.weekPnl >= 0 ? "pnl up" : "pnl down"}>{pnlBook.weekPnl.toFixed(2)}</div>
+          </div>
+          <div>
+            <div className="muted">Month PnL</div>
+            <div className={pnlBook.monthPnl >= 0 ? "pnl up" : "pnl down"}>{pnlBook.monthPnl.toFixed(2)}</div>
+          </div>
+        </div>
+
+        <div className="segmented">
+          <button className={`seg-btn ${pnlView === "day" ? "active" : ""}`} onClick={() => setPnlView("day")}>Day</button>
+          <button className={`seg-btn ${pnlView === "week" ? "active" : ""}`} onClick={() => setPnlView("week")}>Week</button>
+          <button className={`seg-btn ${pnlView === "month" ? "active" : ""}`} onClick={() => setPnlView("month")}>Month</button>
+        </div>
+
+        {pnlView === "day" ? (
+          !pnlBook.dayRows.length ? (
+            <p>Waiting for daily PnL data.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Date (UTC)</th>
+                  <th>PnL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pnlBook.dayRows.map((r) => (
+                  <tr key={r.label}>
+                    <td>{r.label}</td>
+                    <td className={r.pnl >= 0 ? "pnl up" : "pnl down"}>{r.pnl.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : null}
+
+        {pnlView === "week" ? (
+          !pnlBook.weekRows.length ? (
+            <p>Waiting for weekly PnL data.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Week (UTC)</th>
+                  <th>PnL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pnlBook.weekRows.map((r) => (
+                  <tr key={r.label}>
+                    <td>{r.label}</td>
+                    <td className={r.pnl >= 0 ? "pnl up" : "pnl down"}>{r.pnl.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : null}
+
+        {pnlView === "month" ? (
+          !pnlBook.monthCells.length ? (
+            <p>Waiting for monthly calendar data.</p>
+          ) : (
+            <>
+              <p>{pnlBook.monthName} (UTC)</p>
+              <div className="calendar-head">
+                <div>Mon</div>
+                <div>Tue</div>
+                <div>Wed</div>
+                <div>Thu</div>
+                <div>Fri</div>
+                <div>Sat</div>
+                <div>Sun</div>
+              </div>
+              <div className="calendar-grid">
+                {pnlBook.monthCells.map((c) => (
+                  <div key={c.key} className={`calendar-cell ${c.isCurrentMonth ? "" : "other-month"}`}>
+                    <div className="calendar-day">{c.day}</div>
+                    {c.pnl === null ? <div className="muted">-</div> : <div className={c.pnl >= 0 ? "pnl up" : "pnl down"}>{c.pnl.toFixed(2)}</div>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        ) : null}
       </div>
 
       <div className="card">

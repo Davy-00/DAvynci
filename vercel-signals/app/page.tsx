@@ -107,10 +107,13 @@ export default function HomePage() {
   const [pnlView, setPnlView] = useState<PnlView>("day");
   const [tab, setTab] = useState<MainTab>("overview");
   const [nowMs, setNowMs] = useState(Date.now());
+  const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
 
   useEffect(() => {
     let mounted = true;
     let inFlight = false;
+    let es: EventSource | null = null;
+
     const loadSignals = async () => {
       if (inFlight) return;
       inFlight = true;
@@ -123,13 +126,33 @@ export default function HomePage() {
       }
     };
 
+    try {
+      es = new EventSource("/api/stream");
+      es.addEventListener("snapshot", (evt) => {
+        if (!mounted) return;
+        const msg = evt as MessageEvent;
+        try {
+          setSnapshot(JSON.parse(msg.data));
+          setLiveMode("stream");
+        } catch {
+          // Ignore malformed events and rely on fallback polling.
+        }
+      });
+      es.onerror = () => {
+        if (mounted) setLiveMode("polling");
+      };
+    } catch {
+      setLiveMode("polling");
+    }
+
     loadSignals();
-    const poll = setInterval(loadSignals, 1000);
+    const poll = setInterval(loadSignals, 5000);
     const clock = setInterval(() => setNowMs(Date.now()), 1000);
     return () => {
       mounted = false;
       clearInterval(poll);
       clearInterval(clock);
+      if (es) es.close();
     };
   }, []);
 
@@ -301,7 +324,7 @@ export default function HomePage() {
     <main>
       <section className="hero">
         <h1>DAvynci Live Trading Board</h1>
-        <p>Live refresh: 1s | Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
+        <p>Live mode: {liveMode === "stream" ? "Stream" : "Polling"} | Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
       </section>
 
       <section className="tabs">

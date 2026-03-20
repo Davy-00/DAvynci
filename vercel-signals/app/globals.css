@@ -43,6 +43,13 @@ h3 {
   color: #4a5f7b;
 }
 
+.hero-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
 .topbar {
   position: sticky;
   top: 8px;
@@ -413,6 +420,13 @@ td {
 
 .btn:hover {
   filter: brightness(0.95);
+}
+
+.btn.btn-ghost {
+  background: #f2f7ff;
+  color: #1f4f94;
+  border-color: #c9ddfb;
+  padding: 8px 12px;
 }
 
 .muted {

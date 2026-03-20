@@ -660,6 +660,26 @@ export default function HomePage() {
 
       <section className="hero minimal">
         <p>Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
+        <div className="hero-actions">
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setTab("trades");
+              setMenuOpen(false);
+            }}
+          >
+            Open Trade History
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setTab("analytics");
+              setMenuOpen(false);
+            }}
+          >
+            Open Analytics
+          </button>
+        </div>
       </section>
 
       {menuOpen ? <div className="menu-backdrop" onClick={() => setMenuOpen(false)} /> : null}
@@ -671,7 +691,7 @@ export default function HomePage() {
           ["pnl", "PnL Book"],
           ["signals", "Signals"],
           ["positions", "Positions"],
-          ["trades", "Trades"],
+          ["trades", "Trade History (Closed)"],
           ["events", "Events"],
           ["logs", "Logs"],
           ["diagnostics", "Diagnostics"],
@@ -949,7 +969,7 @@ export default function HomePage() {
         <div className="card">
           <h3>Closed Trades (All)</h3>
           {!(snapshot?.closed_trades || []).length ? (
-            <p>No closed trades yet.</p>
+            <p>No closed trades yet. Once the bot pushes closed deals, they will appear here with TP/SL/Trail/BE labels.</p>
           ) : (
             <div className="table-wrap"><table>
               <thead>

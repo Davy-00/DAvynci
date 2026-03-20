@@ -1,0 +1,76 @@
+[2026-03-20 02:03:51] Live mode requested without MT5_LOGIN. Using current MT5 terminal session.
+[2026-03-20 02:03:51] Connected to MT5 | Login=168378165 | Server=XMGlobal-MT5 2 | Balance=200.0
+[2026-03-20 02:03:51] DRY_RUN=False
+[2026-03-20 02:03:51] Bot loop started.
+[2026-03-20 02:03:51] MT5 connection unhealthy. streak=1
+[2026-03-20 02:04:06] MT5 connection unhealthy. streak=2
+[2026-03-20 02:04:21] MT5 connection unhealthy. streak=3
+[2026-03-20 02:04:21] MT5 connection watchdog triggered. failures=3, cap=3
+[2026-03-20 02:04:36] MT5 connection unhealthy. streak=4
+[2026-03-20 02:04:51] MT5 connection unhealthy. streak=5
+[2026-03-20 02:05:06] MT5 connection unhealthy. streak=6
+[2026-03-20 02:05:21] MT5 connection unhealthy. streak=7
+[2026-03-20 02:05:36] MT5 connection unhealthy. streak=8
+[2026-03-20 02:05:51] MT5 connection unhealthy. streak=9
+[2026-03-20 02:06:06] MT5 connection unhealthy. streak=10
+[2026-03-20 02:06:21] MT5 connection unhealthy. streak=11
+[2026-03-20 02:06:36] MT5 connection unhealthy. streak=12
+[2026-03-20 02:06:51] MT5 connection unhealthy. streak=13
+[2026-03-20 02:07:06] MT5 connection unhealthy. streak=14
+[2026-03-20 02:07:21] MT5 connection unhealthy. streak=15
+[2026-03-20 02:07:36] MT5 connection unhealthy. streak=16
+[2026-03-20 02:07:51] MT5 connection unhealthy. streak=17
+[2026-03-20 02:08:06] MT5 connection unhealthy. streak=18
+[2026-03-20 02:08:21] MT5 connection unhealthy. streak=19
+[2026-03-20 02:08:36] MT5 connection unhealthy. streak=20
+[2026-03-20 02:08:51] MT5 connection unhealthy. streak=21
+[2026-03-20 02:09:06] MT5 connection unhealthy. streak=22
+[2026-03-20 02:09:21] MT5 connection unhealthy. streak=23
+[2026-03-20 02:09:36] MT5 connection unhealthy. streak=24
+[2026-03-20 02:09:51] MT5 connection unhealthy. streak=25
+[2026-03-20 02:10:06] MT5 connection unhealthy. streak=26
+[2026-03-20 02:10:21] MT5 connection unhealthy. streak=27
+[2026-03-20 02:10:36] MT5 connection unhealthy. streak=28
+[2026-03-20 02:10:51] MT5 connection unhealthy. streak=29
+[2026-03-20 02:11:06] MT5 connection unhealthy. streak=30
+[2026-03-20 02:11:21] MT5 connection unhealthy. streak=31
+[2026-03-20 02:11:36] MT5 connection unhealthy. streak=32
+[2026-03-20 02:11:51] MT5 connection unhealthy. streak=33
+[2026-03-20 02:12:06] MT5 connection unhealthy. streak=34
+[2026-03-20 02:12:21] Daily state reset. day=2026-03-20 start_balance=200.0
+[2026-03-20 02:12:21] ORDER GOLD BUY lot=0.01 price=4660.88000 sl=4652.05300 tp=4667.94160 score=4.24
+[2026-03-20 02:12:21] Order placed successfully. ticket=1936045542
+[2026-03-20 02:15:37] ORDER NZDUSD BUY lot=0.06 price=0.58757 sl=0.58722 tp=0.58785 score=3.45
+[2026-03-20 02:15:37] Order placed successfully. ticket=1936048974
+[2026-03-20 02:17:53] SL updated ticket=1936045542 -> 4660.95000
+[2026-03-20 02:18:23] SL updated ticket=1936045542 -> 4662.92000
+[2026-03-20 02:33:27] ORDER EURUSD SELL lot=0.06 price=1.15710 sl=1.15746 tp=1.15681 score=3.68
+[2026-03-20 02:33:28] Order placed successfully. ticket=1936063905
+[2026-03-20 02:35:43] ORDER EURCHF SELL lot=0.08 price=0.91256 sl=0.91277 tp=0.91240 score=3.57
+[2026-03-20 02:35:43] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:35:58] ORDER EURCHF SELL lot=0.08 price=0.91254 sl=0.91275 tp=0.91237 score=3.96
+[2026-03-20 02:35:58] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:36:13] ORDER EURCHF SELL lot=0.08 price=0.91255 sl=0.91276 tp=0.91238 score=3.73
+[2026-03-20 02:36:13] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:36:28] ORDER EURCHF SELL lot=0.08 price=0.91256 sl=0.91277 tp=0.91239 score=3.53
+[2026-03-20 02:36:28] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:36:43] ORDER EURCHF SELL lot=0.08 price=0.91255 sl=0.91276 tp=0.91238 score=3.73
+[2026-03-20 02:36:43] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:36:58] ORDER EURCHF SELL lot=0.08 price=0.91254 sl=0.91275 tp=0.91237 score=3.93
+[2026-03-20 02:36:58] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:37:13] ORDER EURCHF SELL lot=0.08 price=0.91253 sl=0.91274 tp=0.91236 score=4.13
+[2026-03-20 02:37:13] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:37:29] ORDER EURCHF SELL lot=0.08 price=0.91254 sl=0.91275 tp=0.91237 score=3.93
+[2026-03-20 02:37:29] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:37:44] ORDER EURCHF SELL lot=0.08 price=0.91255 sl=0.91276 tp=0.91238 score=3.73
+[2026-03-20 02:37:44] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:37:59] ORDER EURCHF SELL lot=0.07 price=0.91255 sl=0.91276 tp=0.91238 score=3.73
+[2026-03-20 02:37:59] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:38:14] ORDER EURCHF SELL lot=0.07 price=0.91255 sl=0.91276 tp=0.91238 score=3.73
+[2026-03-20 02:38:14] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:39:14] ORDER EURCHF SELL lot=0.07 price=0.91256 sl=0.91277 tp=0.91239 score=3.53
+[2026-03-20 02:39:14] order_send retcode=10016 comment=Invalid stops
+[2026-03-20 02:40:44] ORDER NZDUSD BUY lot=0.05 price=0.58771 sl=0.58733 tp=0.58801 score=3.59
+[2026-03-20 02:40:45] Order placed successfully. ticket=1936068209
+[2026-03-20 02:44:16] ORDER EURCHF SELL lot=0.08 price=0.91251 sl=0.91271 tp=0.91235 score=3.86
+[2026-03-20 02:44:16] order_send retcode=10016 comment=Invalid stops

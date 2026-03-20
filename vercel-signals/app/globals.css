@@ -1,0 +1,58 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  background: #0b1220;
+  color: #e6edf7;
+}
+
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 {
+  margin: 0 0 8px;
+}
+
+.card {
+  background: #121c30;
+  border: 1px solid #26314a;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 4px 10px;
+  margin-right: 6px;
+}
+
+.buy {
+  background: #083;
+  color: #d4ffe8;
+}
+
+.sell {
+  background: #a11;
+  color: #ffe3e3;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border-bottom: 1px solid #24314a;
+  text-align: left;
+  padding: 10px 8px;
+  font-size: 14px;
+}

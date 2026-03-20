@@ -16,6 +16,32 @@ export type SignalSnapshot = {
   timestamp_utc: string;
   halted: boolean;
   halt_reason: string;
+  dry_run?: boolean;
+  symbols?: string[];
+  guard_state?: {
+    today_opened_trades?: number;
+    today_consecutive_losses?: number;
+    mt5_failure_streak?: number;
+    stale_data_streak?: number;
+    unhandled_error_streak?: number;
+  };
+  account?: {
+    login?: number;
+    server?: string;
+    balance?: number;
+    equity?: number;
+    margin_free?: number;
+  };
+  bot_positions?: Array<{
+    ticket: number;
+    symbol: string;
+    type: string;
+    volume: number;
+    price_open: number;
+    sl: number;
+    tp: number;
+    profit: number;
+  }>;
   signals: BotSignal[];
 };
 

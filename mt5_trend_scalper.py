@@ -773,10 +773,47 @@ def write_status_snapshot(now_utc: datetime) -> None:
 
 
 def write_signal_snapshot(now_utc: datetime, signals: List[Dict[str, object]]) -> None:
+    account = mt5.account_info()
+    positions = mt5.positions_get()
+    bot_positions = []
+    if positions is not None:
+        for p in positions:
+            if p.magic != CONFIG.magic_number:
+                continue
+            bot_positions.append(
+                {
+                    "ticket": int(p.ticket),
+                    "symbol": p.symbol,
+                    "type": "buy" if p.type == mt5.POSITION_TYPE_BUY else "sell",
+                    "volume": float(p.volume),
+                    "price_open": float(p.price_open),
+                    "sl": float(p.sl),
+                    "tp": float(p.tp),
+                    "profit": float(p.profit),
+                }
+            )
+
     payload = {
         "timestamp_utc": now_utc.isoformat(),
         "halted": bool(RUNTIME_STATE.get("halted")),
         "halt_reason": str(RUNTIME_STATE.get("halt_reason") or ""),
+        "guard_state": {
+            "today_opened_trades": int(RUNTIME_STATE.get("today_opened_trades") or 0),
+            "today_consecutive_losses": int(RUNTIME_STATE.get("today_consecutive_losses") or 0),
+            "mt5_failure_streak": int(RUNTIME_STATE.get("mt5_failure_streak") or 0),
+            "stale_data_streak": int(RUNTIME_STATE.get("stale_data_streak") or 0),
+            "unhandled_error_streak": int(RUNTIME_STATE.get("unhandled_error_streak") or 0),
+        },
+        "dry_run": bool(CONFIG.dry_run),
+        "symbols": CONFIG.symbols,
+        "account": {
+            "login": int(account.login) if account is not None else 0,
+            "server": str(account.server) if account is not None else "",
+            "balance": float(account.balance) if account is not None else 0.0,
+            "equity": float(account.equity) if account is not None else 0.0,
+            "margin_free": float(account.margin_free) if account is not None else 0.0,
+        },
+        "bot_positions": bot_positions,
         "signals": signals,
     }
     try:

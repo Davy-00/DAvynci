@@ -22,16 +22,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  await kv.set("bot:latest_snapshot", body);
+  try {
+    await kv.set("bot:latest_snapshot", body);
+  } catch {
+    // KV may not be configured yet; continue to email flow.
+  }
 
   const active = actionableSignals(body);
   const digest = signalDigest(active);
-  const lastDigest = (await kv.get<string>("bot:last_email_digest")) || "";
+  let lastDigest = "";
+  try {
+    lastDigest = (await kv.get<string>("bot:last_email_digest")) || "";
+  } catch {
+    lastDigest = "";
+  }
 
   if (active.length > 0 && digest !== lastDigest) {
     const resendApiKey = process.env.RESEND_API_KEY || "";
     const to = process.env.SIGNAL_EMAIL_TO || "";
-    const from = process.env.SIGNAL_EMAIL_FROM || "onboarding@resend.dev";
+    const from = process.env.SIGNAL_EMAIL_FROM || "bebisday@gmail.com";
 
     if (resendApiKey && to) {
       const resend = new Resend(resendApiKey);
@@ -48,7 +57,11 @@ export async function POST(req: NextRequest) {
         subject: `DAvynci Signals: ${active.length} Active Call(s)`,
         html: `<h2>Active Trade Calls</h2><p>Time: ${body.timestamp_utc}</p><table border='1' cellpadding='6' cellspacing='0'><thead><tr><th>Symbol</th><th>Side</th><th>Lot</th><th>SL</th><th>TP</th><th>Score</th></tr></thead><tbody>${rows}</tbody></table>`,
       });
-      await kv.set("bot:last_email_digest", digest);
+      try {
+        await kv.set("bot:last_email_digest", digest);
+      } catch {
+        // Ignore KV write failures to avoid dropping successful email sends.
+      }
     }
   }
 

@@ -51,6 +51,11 @@ type Snapshot = {
     details: string;
   }>;
   recent_logs?: string[];
+  performance_history?: Array<{
+    timestamp_utc: string;
+    equity: number;
+    balance: number;
+  }>;
   signals: Signal[];
 };
 
@@ -61,20 +66,29 @@ export default function HomePage() {
 
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
+    const loadSignals = async () => {
       const res = await fetch("/api/signals", { cache: "no-store" });
       const data = await res.json();
       if (mounted) setSnapshot(data);
+    };
+    loadSignals();
+    const t = setInterval(loadSignals, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(t);
+    };
+  }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    const loadSubscriber = async () => {
       const sub = await fetch("/api/subscribers", { cache: "no-store" });
       const subData = await sub.json();
       if (mounted && subData?.email) setEmail(String(subData.email));
     };
-    load();
-    const t = setInterval(load, 10000);
+    loadSubscriber();
     return () => {
       mounted = false;
-      clearInterval(t);
     };
   }, []);
 
@@ -85,6 +99,49 @@ export default function HomePage() {
       ),
     [snapshot]
   );
+
+  const performance = useMemo(() => {
+    const points = (snapshot?.performance_history || []).slice(-120);
+    if (!points.length) {
+      return {
+        equityPath: "",
+        balancePath: "",
+        minY: 0,
+        maxY: 1,
+      };
+    }
+
+    const width = 920;
+    const height = 240;
+    const padX = 18;
+    const padY = 16;
+    const values = points.flatMap((p) => [Number(p.equity), Number(p.balance)]).filter(Number.isFinite);
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const span = maxV - minV || 1;
+
+    const xFor = (i: number) => {
+      if (points.length === 1) return width / 2;
+      return padX + (i / (points.length - 1)) * (width - padX * 2);
+    };
+    const yFor = (v: number) => {
+      const normalized = (v - minV) / span;
+      return height - padY - normalized * (height - padY * 2);
+    };
+
+    const toPath = (series: Array<{ x: number; y: number }>) =>
+      series.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+
+    const equityPath = toPath(points.map((p, i) => ({ x: xFor(i), y: yFor(Number(p.equity)) })));
+    const balancePath = toPath(points.map((p, i) => ({ x: xFor(i), y: yFor(Number(p.balance)) })));
+
+    return {
+      equityPath,
+      balancePath,
+      minY: minV,
+      maxY: maxV,
+    };
+  }, [snapshot]);
 
   const signalType = (s: Signal) => {
     const side = String(s.side || "").toLowerCase();
@@ -128,6 +185,24 @@ export default function HomePage() {
             <tr><td>Halt Reason</td><td>{snapshot?.halt_reason || "-"}</td></tr>
           </tbody>
         </table>
+      </div>
+
+      <div className="card">
+        <h3>Bot Performance</h3>
+        {!(snapshot?.performance_history || []).length ? (
+          <p>Waiting for enough account snapshots to draw performance.</p>
+        ) : (
+          <>
+            <svg viewBox="0 0 920 240" width="100%" height="240" role="img" aria-label="Bot equity and balance history">
+              <rect x="0" y="0" width="920" height="240" fill="#0f172a" rx="8" />
+              <path d={performance.balancePath} fill="none" stroke="#e2e8f0" strokeWidth="2" opacity="0.9" />
+              <path d={performance.equityPath} fill="none" stroke="#22d3ee" strokeWidth="3" />
+            </svg>
+            <p style={{ marginTop: 8 }}>
+              Range: {performance.minY.toFixed(2)} to {performance.maxY.toFixed(2)}
+            </p>
+          </>
+        )}
       </div>
 
       <div className="card">

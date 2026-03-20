@@ -1,9 +1,16 @@
 import type { SignalSnapshot } from "@/lib/signals";
 
+type PerformancePoint = {
+  timestamp_utc: string;
+  equity: number;
+  balance: number;
+};
+
 type RuntimeStore = {
   snapshot: SignalSnapshot | null;
   lastEmailDigest: string;
   subscriberEmail: string;
+  performanceHistory: PerformancePoint[];
 };
 
 declare global {
@@ -23,17 +30,41 @@ export function getStore(): RuntimeStore {
       snapshot: defaultSnapshot,
       lastEmailDigest: "",
       subscriberEmail: "",
+      performanceHistory: [],
     };
   }
   return globalThis.__davynciStore__;
 }
 
 export function getSnapshot(): SignalSnapshot {
-  return getStore().snapshot ?? defaultSnapshot;
+  const store = getStore();
+  const snapshot = store.snapshot ?? defaultSnapshot;
+  return {
+    ...snapshot,
+    performance_history: store.performanceHistory,
+  };
 }
 
 export function setSnapshot(snapshot: SignalSnapshot): void {
-  getStore().snapshot = snapshot;
+  const store = getStore();
+  store.snapshot = snapshot;
+
+  const eq = Number(snapshot.account?.equity);
+  const bal = Number(snapshot.account?.balance);
+  if (Number.isFinite(eq) && Number.isFinite(bal)) {
+    const ts = String(snapshot.timestamp_utc || new Date().toISOString());
+    const last = store.performanceHistory[store.performanceHistory.length - 1];
+    if (!last || last.timestamp_utc !== ts) {
+      store.performanceHistory.push({
+        timestamp_utc: ts,
+        equity: eq,
+        balance: bal,
+      });
+      if (store.performanceHistory.length > 400) {
+        store.performanceHistory = store.performanceHistory.slice(-400);
+      }
+    }
+  }
 }
 
 export function getLastDigest(): string {

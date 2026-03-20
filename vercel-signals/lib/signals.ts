@@ -50,6 +50,11 @@ export type SignalSnapshot = {
   }>;
   recent_logs?: string[];
   signals: BotSignal[];
+  performance_history?: Array<{
+    timestamp_utc: string;
+    equity: number;
+    balance: number;
+  }>;
 };
 
 export function actionableSignals(snapshot: SignalSnapshot): BotSignal[] {

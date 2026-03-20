@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const STARTING_BALANCE = 200;
 
 type PnlView = "day" | "week" | "month";
-type MainTab = "overview" | "pnl" | "signals" | "positions" | "trades" | "events" | "logs" | "diagnostics";
+type MainTab = "overview" | "analytics" | "pnl" | "signals" | "positions" | "trades" | "events" | "logs" | "diagnostics";
 type ChartRange = "15m" | "1h" | "4h" | "12h" | "1d" | "3d" | "1w" | "all";
 type ChartResolution = "raw" | "1m" | "5m";
 type ChartSmoothing = "none" | "ema3" | "ema8";
@@ -529,6 +529,112 @@ export default function HomePage() {
   const uiWeek = useAnimatedNumber(pnl.week);
   const uiMonth = useAnimatedNumber(pnl.month);
 
+  const analytics = useMemo(() => {
+    const trades = (snapshot?.closed_trades || []).map((t) => ({
+      ...t,
+      pnl: Number(t.pnl || 0),
+      openMs: new Date(String(t.entry_time_utc || "")).getTime(),
+      closeMs: new Date(String(t.close_time_utc || "")).getTime(),
+    }));
+    const total = trades.length;
+    const wins = trades.filter((t) => t.pnl > 0).length;
+    const losses = trades.filter((t) => t.pnl < 0).length;
+    const breakeven = total - wins - losses;
+    const grossProfit = trades.filter((t) => t.pnl > 0).reduce((a, t) => a + t.pnl, 0);
+    const grossLoss = trades.filter((t) => t.pnl < 0).reduce((a, t) => a + t.pnl, 0);
+    const netProfit = grossProfit + grossLoss;
+    const avgWin = wins ? grossProfit / wins : 0;
+    const avgLoss = losses ? grossLoss / losses : 0;
+    const profitFactor = losses ? grossProfit / Math.abs(grossLoss) : 0;
+    const expectancy = total ? netProfit / total : 0;
+    const largestWin = trades.length ? Math.max(...trades.map((t) => t.pnl)) : 0;
+    const largestLoss = trades.length ? Math.min(...trades.map((t) => t.pnl)) : 0;
+
+    let maxWinStreak = 0;
+    let maxLossStreak = 0;
+    let winStreak = 0;
+    let lossStreak = 0;
+    for (const t of [...trades].sort((a, b) => a.closeMs - b.closeMs)) {
+      if (t.pnl > 0) {
+        winStreak += 1;
+        lossStreak = 0;
+      } else if (t.pnl < 0) {
+        lossStreak += 1;
+        winStreak = 0;
+      } else {
+        winStreak = 0;
+        lossStreak = 0;
+      }
+      if (winStreak > maxWinStreak) maxWinStreak = winStreak;
+      if (lossStreak > maxLossStreak) maxLossStreak = lossStreak;
+    }
+
+    const durations = trades
+      .map((t) => (Number.isFinite(t.openMs) && Number.isFinite(t.closeMs) ? Math.max(0, t.closeMs - t.openMs) : 0))
+      .filter((d) => d > 0);
+    const avgDurationMin = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length / 60000 : 0;
+
+    const perf = performancePoints;
+    let maxDrawdown = 0;
+    let maxDrawdownPct = 0;
+    let peak = STARTING_BALANCE;
+    for (const p of perf) {
+      if (p.equity > peak) peak = p.equity;
+      const dd = peak - p.equity;
+      const ddPct = peak > 0 ? (dd / peak) * 100 : 0;
+      if (dd > maxDrawdown) maxDrawdown = dd;
+      if (ddPct > maxDrawdownPct) maxDrawdownPct = ddPct;
+    }
+
+    const byMonth = new Map<string, number>();
+    for (const p of perf) {
+      const d = new Date(p.timestamp_utc);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      byMonth.set(key, p.equity);
+    }
+    const months = Array.from(byMonth.keys()).sort();
+    const monthlyRows: Array<{ month: string; equity: number; gain: number; gainPct: number }> = [];
+    let prevEq = STARTING_BALANCE;
+    for (const m of months) {
+      const eq = byMonth.get(m) || prevEq;
+      const gain = eq - prevEq;
+      const gainPct = prevEq > 0 ? (gain / prevEq) * 100 : 0;
+      monthlyRows.push({ month: m, equity: eq, gain, gainPct });
+      prevEq = eq;
+    }
+    monthlyRows.reverse();
+
+    const currentEq = Number(snapshot?.account?.equity ?? STARTING_BALANCE);
+    const absoluteGain = currentEq - STARTING_BALANCE;
+    const absoluteGainPct = STARTING_BALANCE > 0 ? (absoluteGain / STARTING_BALANCE) * 100 : 0;
+    const winRate = total ? (wins / total) * 100 : 0;
+
+    return {
+      total,
+      wins,
+      losses,
+      breakeven,
+      winRate,
+      grossProfit,
+      grossLoss,
+      netProfit,
+      avgWin,
+      avgLoss,
+      profitFactor,
+      expectancy,
+      largestWin,
+      largestLoss,
+      maxDrawdown,
+      maxDrawdownPct,
+      maxWinStreak,
+      maxLossStreak,
+      avgDurationMin,
+      absoluteGain,
+      absoluteGainPct,
+      monthlyRows,
+    };
+  }, [snapshot, performancePoints]);
+
   return (
     <main>
       <header className="topbar">
@@ -561,6 +667,7 @@ export default function HomePage() {
         <div className="menu-title">Navigation</div>
         {([
           ["overview", "Overview"],
+          ["analytics", "Myfxbook Style"],
           ["pnl", "PnL Book"],
           ["signals", "Signals"],
           ["positions", "Positions"],
@@ -670,6 +777,68 @@ export default function HomePage() {
               <button className="btn" onClick={saveEmail}>Save Email</button>
             </div>
             {saveMsg ? <p>{saveMsg}</p> : null}
+          </div>
+        </>
+      ) : null}
+
+      {tab === "analytics" ? (
+        <>
+          <div className="kpi-grid kpi-grid-analytics">
+            <div className="kpi"><span>Absolute Gain</span><strong className={analytics.absoluteGain >= 0 ? "up" : "down"}>{fmtMoney(analytics.absoluteGain)} ({analytics.absoluteGainPct.toFixed(2)}%)</strong></div>
+            <div className="kpi"><span>Win Rate</span><strong>{analytics.winRate.toFixed(1)}%</strong></div>
+            <div className="kpi"><span>Profit Factor</span><strong>{analytics.profitFactor.toFixed(2)}</strong></div>
+            <div className="kpi"><span>Expectancy</span><strong className={analytics.expectancy >= 0 ? "up" : "down"}>{fmtMoney(analytics.expectancy)}</strong></div>
+            <div className="kpi"><span>Max Drawdown</span><strong className="down">{fmtMoney(analytics.maxDrawdown)} ({analytics.maxDrawdownPct.toFixed(2)}%)</strong></div>
+            <div className="kpi"><span>Avg Trade Duration</span><strong>{analytics.avgDurationMin.toFixed(1)} min</strong></div>
+          </div>
+
+          <div className="card">
+            <h3>Trading Stats</h3>
+            <div className="table-wrap"><table>
+              <tbody>
+                <tr><td>Total Trades</td><td>{analytics.total}</td></tr>
+                <tr><td>Winning Trades</td><td>{analytics.wins}</td></tr>
+                <tr><td>Losing Trades</td><td>{analytics.losses}</td></tr>
+                <tr><td>Breakeven Trades</td><td>{analytics.breakeven}</td></tr>
+                <tr><td>Gross Profit</td><td className="up">{fmtMoney(analytics.grossProfit)}</td></tr>
+                <tr><td>Gross Loss</td><td className="down">{fmtMoney(analytics.grossLoss)}</td></tr>
+                <tr><td>Net Profit</td><td className={analytics.netProfit >= 0 ? "up" : "down"}>{fmtMoney(analytics.netProfit)}</td></tr>
+                <tr><td>Average Win</td><td className="up">{fmtMoney(analytics.avgWin)}</td></tr>
+                <tr><td>Average Loss</td><td className="down">{fmtMoney(analytics.avgLoss)}</td></tr>
+                <tr><td>Largest Win</td><td className="up">{fmtMoney(analytics.largestWin)}</td></tr>
+                <tr><td>Largest Loss</td><td className="down">{fmtMoney(analytics.largestLoss)}</td></tr>
+                <tr><td>Max Win Streak</td><td>{analytics.maxWinStreak}</td></tr>
+                <tr><td>Max Loss Streak</td><td>{analytics.maxLossStreak}</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+
+          <div className="card">
+            <h3>Monthly Returns</h3>
+            {!analytics.monthlyRows.length ? (
+              <p>No monthly history yet.</p>
+            ) : (
+              <div className="table-wrap"><table>
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th>Equity Close</th>
+                    <th>Monthly Gain</th>
+                    <th>Monthly %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analytics.monthlyRows.map((m) => (
+                    <tr key={m.month}>
+                      <td>{m.month}</td>
+                      <td>{fmtMoney(m.equity)}</td>
+                      <td className={m.gain >= 0 ? "up" : "down"}>{fmtMoney(m.gain)}</td>
+                      <td className={m.gainPct >= 0 ? "up" : "down"}>{m.gainPct.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
           </div>
         </>
       ) : null}

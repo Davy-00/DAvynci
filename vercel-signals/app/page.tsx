@@ -724,7 +724,7 @@ export default function HomePage() {
       </header>
 
       <section className="hero minimal">
-        <p>Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
+        <p>Updated {lastUpdateAge}</p>
         <div className="hero-actions">
           <button
             className="btn btn-ghost"
@@ -733,7 +733,7 @@ export default function HomePage() {
               setMenuOpen(false);
             }}
           >
-            Open Trade History
+            History
           </button>
           <button
             className="btn btn-ghost"
@@ -742,7 +742,7 @@ export default function HomePage() {
               setMenuOpen(false);
             }}
           >
-            Open Analytics
+            Analytics
           </button>
         </div>
       </section>
@@ -752,11 +752,11 @@ export default function HomePage() {
         <div className="menu-title">Navigation</div>
         {([
           ["overview", "Overview"],
-          ["analytics", "Myfxbook Style"],
+          ["analytics", "Analytics"],
           ["pnl", "PnL Book"],
           ["signals", "Signals"],
           ["positions", "Positions"],
-          ["trades", "Trade History (Closed)"],
+          ["trades", "History"],
           ["diary", "Trading Diary"],
           ["events", "Events"],
           ["logs", "Logs"],
@@ -778,12 +778,12 @@ export default function HomePage() {
       {tab === "overview" ? (
         <>
           <div className="kpi-grid">
-            <div className="kpi"><span>Start Balance</span><strong>{fmtMoney(STARTING_BALANCE)}</strong></div>
+            <div className="kpi"><span>Start</span><strong>{fmtMoney(STARTING_BALANCE)}</strong></div>
             <div className="kpi"><span>Balance</span><strong>{fmtMoney(uiBalance)}</strong></div>
             <div className="kpi"><span>Equity</span><strong>{fmtMoney(uiEquity)}</strong></div>
-            <div className="kpi"><span>Today Trades</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
-            <div className="kpi"><span>Open PnL</span><strong className={uiOpen >= 0 ? "up" : "down"}>{fmtMoney(uiOpen)}</strong></div>
-            <div className="kpi"><span>Net PnL from $200</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
+            <div className="kpi"><span>Trades Today</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
+            <div className="kpi"><span>Open</span><strong className={uiOpen >= 0 ? "up" : "down"}>{fmtMoney(uiOpen)}</strong></div>
+            <div className="kpi"><span>Net</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
           </div>
 
           <div className="card">
@@ -822,7 +822,7 @@ export default function HomePage() {
                 Scale
                 <select value={chartScale} onChange={(e) => setChartScale(e.target.value as ChartScale)}>
                   <option value="auto">Auto</option>
-                  <option value="fromStart">Include $200</option>
+                  <option value="fromStart">Include Start</option>
                 </select>
               </label>
             </div>
@@ -848,7 +848,7 @@ export default function HomePage() {
                   ))}
                 </svg>
                 <p>
-                  Visible range: {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)} | Points: {performance.points.length}
+                  Range {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)} | Points {performance.points.length}
                 </p>
               </>
             ) : (
@@ -939,11 +939,11 @@ export default function HomePage() {
           </div>
 
           <div className="method">
-            <div><strong>Transparent Formula</strong></div>
-            <div>Day = Current Equity - Day Start Equity ({fmtMoney(pnl.currentEquity)} - {fmtMoney(pnl.dayBase)})</div>
-            <div>Week = Current Equity - Week Start Equity ({fmtMoney(pnl.currentEquity)} - {fmtMoney(pnl.weekBase)})</div>
-            <div>Month = Current Equity - Month Start Equity ({fmtMoney(pnl.currentEquity)} - {fmtMoney(pnl.monthBase)})</div>
-            <div>Realized since $200 = Balance - 200 ({fmtMoney(pnl.currentBalance)} - {fmtMoney(STARTING_BALANCE)}) = {fmtMoney(pnl.realized)}</div>
+            <div><strong>Formula</strong></div>
+            <div>Day: Equity - Day Base</div>
+            <div>Week: Equity - Week Base</div>
+            <div>Month: Equity - Month Base</div>
+            <div>Realized: Balance - Start</div>
           </div>
 
           <div className="segmented">
@@ -1033,9 +1033,9 @@ export default function HomePage() {
 
       {tab === "trades" ? (
         <div className="card">
-          <h3>Closed Trades (All)</h3>
+          <h3>Closed Trades</h3>
           {!(snapshot?.closed_trades || []).length ? (
-            <p>No closed trades yet. Once the bot pushes closed deals, they will appear here with TP/SL/Trail/BE labels.</p>
+            <p>No closed trades yet.</p>
           ) : (
             <div className="table-wrap"><table>
               <thead>
@@ -1070,9 +1070,7 @@ export default function HomePage() {
               </tbody>
             </table></div>
           )}
-          <p className="muted" style={{ marginTop: 10 }}>
-            Icons: T=TP, S=SL, R=Trailed SL, B=Break-even, M=Manual.
-          </p>
+          <p className="muted" style={{ marginTop: 10 }}>T TP | S SL | R Trail | B BE | M Manual</p>
         </div>
       ) : null}
 

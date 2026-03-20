@@ -6,6 +6,10 @@ const STARTING_BALANCE = 200;
 
 type PnlView = "day" | "week" | "month";
 type MainTab = "overview" | "pnl" | "signals" | "positions" | "trades" | "events" | "logs" | "diagnostics";
+type ChartRange = "15m" | "1h" | "4h" | "12h" | "1d" | "3d" | "1w" | "all";
+type ChartResolution = "raw" | "1m" | "5m";
+type ChartSmoothing = "none" | "ema3" | "ema8";
+type ChartScale = "auto" | "fromStart";
 
 type Signal = {
   symbol: string;
@@ -77,6 +81,33 @@ type Snapshot = {
 };
 
 type PerfPoint = { timestamp_utc: string; equity: number; balance: number };
+
+function ema(values: number[], span: number): number[] {
+  if (values.length === 0) return [];
+  const alpha = 2 / (span + 1);
+  const out: number[] = [values[0]];
+  for (let i = 1; i < values.length; i += 1) {
+    out.push(alpha * values[i] + (1 - alpha) * out[i - 1]);
+  }
+  return out;
+}
+
+function rangeMs(range: ChartRange): number | null {
+  if (range === "15m") return 15 * 60 * 1000;
+  if (range === "1h") return 60 * 60 * 1000;
+  if (range === "4h") return 4 * 60 * 60 * 1000;
+  if (range === "12h") return 12 * 60 * 60 * 1000;
+  if (range === "1d") return 24 * 60 * 60 * 1000;
+  if (range === "3d") return 3 * 24 * 60 * 60 * 1000;
+  if (range === "1w") return 7 * 24 * 60 * 60 * 1000;
+  return null;
+}
+
+function resolutionMs(res: ChartResolution): number {
+  if (res === "1m") return 60 * 1000;
+  if (res === "5m") return 5 * 60 * 1000;
+  return 0;
+}
 
 function signalType(s: Signal): string {
   const side = String(s.side || "").toLowerCase();
@@ -162,6 +193,14 @@ export default function HomePage() {
   const [pnlView, setPnlView] = useState<PnlView>("day");
   const [tab, setTab] = useState<MainTab>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chartRange, setChartRange] = useState<ChartRange>("1d");
+  const [chartResolution, setChartResolution] = useState<ChartResolution>("raw");
+  const [chartSmoothing, setChartSmoothing] = useState<ChartSmoothing>("none");
+  const [chartScale, setChartScale] = useState<ChartScale>("auto");
+  const [showEquitySeries, setShowEquitySeries] = useState(true);
+  const [showBalanceSeries, setShowBalanceSeries] = useState(true);
+  const [showNetSeries, setShowNetSeries] = useState(false);
+  const [showCloseMarkers, setShowCloseMarkers] = useState(true);
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
   const fingerprintRef = useRef("");
@@ -344,29 +383,127 @@ export default function HomePage() {
   }, [performancePoints, snapshot]);
 
   const performance = useMemo(() => {
-    const points = performancePoints.slice(-120);
-    if (!points.length) return { equityPath: "", balancePath: "", minY: 0, maxY: 1 };
+    if (!performancePoints.length) {
+      return {
+        points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
+        equityPath: "",
+        balancePath: "",
+        netPath: "",
+        minY: 0,
+        maxY: 1,
+        tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
+      };
+    }
+
+    const latestTs = snapshot?.timestamp_utc ? new Date(snapshot.timestamp_utc).getTime() : new Date(performancePoints[performancePoints.length - 1].timestamp_utc).getTime();
+    const cutMs = rangeMs(chartRange);
+    const raw = cutMs === null
+      ? performancePoints
+      : performancePoints.filter((p) => new Date(p.timestamp_utc).getTime() >= latestTs - cutMs);
+
+    const bucketMs = resolutionMs(chartResolution);
+    let points = raw;
+    if (bucketMs > 0 && raw.length > 1) {
+      const buckets = new Map<number, PerfPoint>();
+      for (const p of raw) {
+        const t = new Date(p.timestamp_utc).getTime();
+        const b = Math.floor(t / bucketMs) * bucketMs;
+        buckets.set(b, p);
+      }
+      points = Array.from(buckets.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map((x) => x[1]);
+    }
+
+    const withNet = points.map((p) => ({ ...p, net: p.equity - STARTING_BALANCE, tsMs: new Date(p.timestamp_utc).getTime() }));
+    if (!withNet.length) {
+      return {
+        points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
+        equityPath: "",
+        balancePath: "",
+        netPath: "",
+        minY: 0,
+        maxY: 1,
+        tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
+      };
+    }
+
+    let eq = withNet.map((p) => p.equity);
+    let bal = withNet.map((p) => p.balance);
+    let net = withNet.map((p) => p.net);
+    if (chartSmoothing === "ema3") {
+      eq = ema(eq, 3);
+      bal = ema(bal, 3);
+      net = ema(net, 3);
+    } else if (chartSmoothing === "ema8") {
+      eq = ema(eq, 8);
+      bal = ema(bal, 8);
+      net = ema(net, 8);
+    }
+
+    const smoothed = withNet.map((p, i) => ({ ...p, equity: eq[i], balance: bal[i], net: net[i] }));
 
     const w = 920;
-    const h = 240;
-    const px = 16;
-    const py = 14;
-    const values = points.flatMap((p) => [p.equity, p.balance]);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const h = 280;
+    const px = 18;
+    const py = 16;
+    const selectedValues: number[] = [];
+    if (showEquitySeries) selectedValues.push(...smoothed.map((p) => p.equity));
+    if (showBalanceSeries) selectedValues.push(...smoothed.map((p) => p.balance));
+    if (showNetSeries) selectedValues.push(...smoothed.map((p) => p.net));
+    if (!selectedValues.length) selectedValues.push(...smoothed.map((p) => p.equity));
+    if (chartScale === "fromStart") selectedValues.push(STARTING_BALANCE);
+
+    const min = Math.min(...selectedValues);
+    const max = Math.max(...selectedValues);
     const span = max - min || 1;
 
-    const xFor = (i: number) => (points.length === 1 ? w / 2 : px + (i / (points.length - 1)) * (w - px * 2));
+    const xFor = (i: number) => (smoothed.length === 1 ? w / 2 : px + (i / (smoothed.length - 1)) * (w - px * 2));
     const yFor = (v: number) => h - py - ((v - min) / span) * (h - py * 2);
     const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
 
+    const minTs = smoothed[0].tsMs;
+    const maxTs = smoothed[smoothed.length - 1].tsMs;
+    const xForTs = (ts: number) => {
+      if (maxTs <= minTs) return w / 2;
+      return px + ((ts - minTs) / (maxTs - minTs)) * (w - px * 2);
+    };
+
+    const markers = showCloseMarkers
+      ? (snapshot?.closed_trades || [])
+          .map((t) => ({ ...t, tsMs: new Date(String(t.close_time_utc || "")).getTime() }))
+          .filter((t) => Number.isFinite(t.tsMs) && t.tsMs >= minTs && t.tsMs <= maxTs)
+          .slice(0, 80)
+          .map((t) => ({
+            x: xForTs(t.tsMs),
+            y: yFor(showNetSeries ? Number(t.pnl || 0) : smoothed[smoothed.length - 1].equity),
+            pnl: Number(t.pnl || 0),
+            closeReason: String(t.close_reason || ""),
+            symbol: String(t.symbol || ""),
+          }))
+      : [];
+
     return {
-      equityPath: pathFor(points.map((p) => p.equity)),
-      balancePath: pathFor(points.map((p) => p.balance)),
+      points: smoothed,
+      equityPath: pathFor(smoothed.map((p) => p.equity)),
+      balancePath: pathFor(smoothed.map((p) => p.balance)),
+      netPath: pathFor(smoothed.map((p) => p.net)),
       minY: min,
       maxY: max,
+      tradeMarkers: markers,
     };
-  }, [performancePoints]);
+  }, [
+    performancePoints,
+    snapshot,
+    chartRange,
+    chartResolution,
+    chartSmoothing,
+    chartScale,
+    showEquitySeries,
+    showBalanceSeries,
+    showNetSeries,
+    showCloseMarkers,
+  ]);
 
   const lastUpdateAge = useMemo(() => {
     if (!snapshot?.timestamp_utc) return "no data";
@@ -458,14 +595,68 @@ export default function HomePage() {
 
           <div className="card">
             <h3>Performance</h3>
-            {performance.equityPath ? (
+            <div className="chart-filters">
+              <label>
+                Range
+                <select value={chartRange} onChange={(e) => setChartRange(e.target.value as ChartRange)}>
+                  <option value="15m">15m</option>
+                  <option value="1h">1h</option>
+                  <option value="4h">4h</option>
+                  <option value="12h">12h</option>
+                  <option value="1d">1d</option>
+                  <option value="3d">3d</option>
+                  <option value="1w">1w</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <label>
+                Resolution
+                <select value={chartResolution} onChange={(e) => setChartResolution(e.target.value as ChartResolution)}>
+                  <option value="raw">Raw</option>
+                  <option value="1m">1m</option>
+                  <option value="5m">5m</option>
+                </select>
+              </label>
+              <label>
+                Smoothing
+                <select value={chartSmoothing} onChange={(e) => setChartSmoothing(e.target.value as ChartSmoothing)}>
+                  <option value="none">None</option>
+                  <option value="ema3">EMA 3</option>
+                  <option value="ema8">EMA 8</option>
+                </select>
+              </label>
+              <label>
+                Scale
+                <select value={chartScale} onChange={(e) => setChartScale(e.target.value as ChartScale)}>
+                  <option value="auto">Auto</option>
+                  <option value="fromStart">Include $200</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="series-toggles">
+              <label><input type="checkbox" checked={showEquitySeries} onChange={(e) => setShowEquitySeries(e.target.checked)} /> Equity</label>
+              <label><input type="checkbox" checked={showBalanceSeries} onChange={(e) => setShowBalanceSeries(e.target.checked)} /> Balance</label>
+              <label><input type="checkbox" checked={showNetSeries} onChange={(e) => setShowNetSeries(e.target.checked)} /> Net PnL</label>
+              <label><input type="checkbox" checked={showCloseMarkers} onChange={(e) => setShowCloseMarkers(e.target.checked)} /> Close Markers</label>
+            </div>
+
+            {performance.points.length ? (
               <>
-                <svg viewBox="0 0 920 240" width="100%" height="240" role="img" aria-label="Equity and balance trend">
-                  <rect x="0" y="0" width="920" height="240" fill="#f8fbff" rx="10" />
-                  <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.85" />
-                  <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
+                <svg viewBox="0 0 920 280" width="100%" height="280" role="img" aria-label="Filtered performance chart">
+                  <rect x="0" y="0" width="920" height="280" fill="#f8fbff" rx="10" />
+                  {showBalanceSeries ? <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.9" /> : null}
+                  {showEquitySeries ? <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" /> : null}
+                  {showNetSeries ? <path d={performance.netPath} fill="none" stroke="#9b2c2c" strokeWidth="2" strokeDasharray="5 4" /> : null}
+                  {performance.tradeMarkers.map((m, i) => (
+                    <circle key={`mk-${i}`} cx={m.x} cy={m.y} r="4" fill={m.pnl >= 0 ? "#0e9f6e" : "#b9303d"}>
+                      <title>{`${m.symbol} ${m.closeReason} ${fmtMoney(m.pnl)}`}</title>
+                    </circle>
+                  ))}
                 </svg>
-                <p>Range: {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)}</p>
+                <p>
+                  Visible range: {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)} | Points: {performance.points.length}
+                </p>
               </>
             ) : (
               <p>Waiting for performance snapshots.</p>

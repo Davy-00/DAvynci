@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const STARTING_BALANCE = 200;
 
@@ -100,6 +100,48 @@ function fmtMoney(v: number): string {
   return `$${v.toFixed(2)}`;
 }
 
+function snapshotFingerprint(s: Snapshot | null): string {
+  if (!s) return "";
+  const eq = Number(s.account?.equity ?? 0).toFixed(2);
+  const bal = Number(s.account?.balance ?? 0).toFixed(2);
+  const trades = Number(s.guard_state?.today_opened_trades ?? 0);
+  const signals = Array.isArray(s.signals) ? s.signals.length : 0;
+  const positions = Array.isArray(s.bot_positions) ? s.bot_positions.length : 0;
+  const ts = String(s.timestamp_utc || "");
+  return `${ts}|${eq}|${bal}|${trades}|${signals}|${positions}`;
+}
+
+function useAnimatedNumber(target: number, durationMs = 320): number {
+  const [value, setValue] = useState(target);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const start = value;
+    const delta = target - start;
+    if (!Number.isFinite(target) || Math.abs(delta) < 0.0001) {
+      setValue(target);
+      return;
+    }
+
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - t0) / durationMs);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(start + delta * eased);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target]);
+
+  return value;
+}
+
 export default function HomePage() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [email, setEmail] = useState("");
@@ -108,6 +150,14 @@ export default function HomePage() {
   const [tab, setTab] = useState<MainTab>("overview");
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
+  const fingerprintRef = useRef("");
+
+  const applySnapshot = (next: Snapshot | null) => {
+    const fp = snapshotFingerprint(next);
+    if (!fp || fp === fingerprintRef.current) return;
+    fingerprintRef.current = fp;
+    setSnapshot(next);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -120,7 +170,7 @@ export default function HomePage() {
       try {
         const res = await fetch(`/api/signals?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
-        if (mounted) setSnapshot(data);
+        if (mounted) applySnapshot(data);
       } finally {
         inFlight = false;
       }
@@ -132,7 +182,7 @@ export default function HomePage() {
         if (!mounted) return;
         const msg = evt as MessageEvent;
         try {
-          setSnapshot(JSON.parse(msg.data));
+          applySnapshot(JSON.parse(msg.data));
           setLiveMode("stream");
         } catch {
           // Ignore malformed events and rely on fallback polling.
@@ -320,6 +370,14 @@ export default function HomePage() {
     setSaveMsg(res.ok ? "Email saved." : "Failed to save email.");
   };
 
+  const uiBalance = useAnimatedNumber(pnl.currentBalance);
+  const uiEquity = useAnimatedNumber(pnl.currentEquity);
+  const uiOpen = useAnimatedNumber(floatingPnl);
+  const uiNet = useAnimatedNumber(pnl.net);
+  const uiDay = useAnimatedNumber(pnl.day);
+  const uiWeek = useAnimatedNumber(pnl.week);
+  const uiMonth = useAnimatedNumber(pnl.month);
+
   return (
     <main>
       <section className="hero">
@@ -347,11 +405,11 @@ export default function HomePage() {
         <>
           <div className="kpi-grid">
             <div className="kpi"><span>Start Balance</span><strong>{fmtMoney(STARTING_BALANCE)}</strong></div>
-            <div className="kpi"><span>Balance</span><strong>{fmtMoney(pnl.currentBalance)}</strong></div>
-            <div className="kpi"><span>Equity</span><strong>{fmtMoney(pnl.currentEquity)}</strong></div>
+            <div className="kpi"><span>Balance</span><strong>{fmtMoney(uiBalance)}</strong></div>
+            <div className="kpi"><span>Equity</span><strong>{fmtMoney(uiEquity)}</strong></div>
             <div className="kpi"><span>Today Trades</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
-            <div className="kpi"><span>Open PnL</span><strong className={floatingPnl >= 0 ? "up" : "down"}>{fmtMoney(floatingPnl)}</strong></div>
-            <div className="kpi"><span>Net PnL from $200</span><strong className={pnl.net >= 0 ? "up" : "down"}>{fmtMoney(pnl.net)}</strong></div>
+            <div className="kpi"><span>Open PnL</span><strong className={uiOpen >= 0 ? "up" : "down"}>{fmtMoney(uiOpen)}</strong></div>
+            <div className="kpi"><span>Net PnL from $200</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
           </div>
 
           <div className="card">
@@ -385,9 +443,9 @@ export default function HomePage() {
         <div className="card">
           <h3>PnL Book</h3>
           <div className="pnl-summary">
-            <div><div className="muted">Today</div><div className={pnl.day >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(pnl.day)}</div></div>
-            <div><div className="muted">This Week</div><div className={pnl.week >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(pnl.week)}</div></div>
-            <div><div className="muted">This Month</div><div className={pnl.month >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(pnl.month)}</div></div>
+            <div><div className="muted">Today</div><div className={uiDay >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(uiDay)}</div></div>
+            <div><div className="muted">This Week</div><div className={uiWeek >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(uiWeek)}</div></div>
+            <div><div className="muted">This Month</div><div className={uiMonth >= 0 ? "pnl up" : "pnl down"}>{fmtMoney(uiMonth)}</div></div>
           </div>
 
           <div className="method">

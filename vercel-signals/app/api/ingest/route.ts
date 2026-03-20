@@ -1,7 +1,7 @@
-import { kv } from "@vercel/kv";
 import { Resend } from "resend";
 import { NextRequest, NextResponse } from "next/server";
 import { actionableSignals, signalDigest, SignalSnapshot, signalLabel } from "@/lib/signals";
+import { getLastDigest, getSubscriberEmail, setLastDigest, setSnapshot } from "@/lib/runtime-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,29 +22,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  try {
-    await kv.set("bot:latest_snapshot", body);
-  } catch {
-    // KV may not be configured yet; continue to email flow.
-  }
+  setSnapshot(body);
 
   const active = actionableSignals(body);
   const digest = signalDigest(active);
-  let lastDigest = "";
-  try {
-    lastDigest = (await kv.get<string>("bot:last_email_digest")) || "";
-  } catch {
-    lastDigest = "";
-  }
+  const lastDigest = getLastDigest();
 
   if (active.length > 0 && digest !== lastDigest) {
     const resendApiKey = process.env.RESEND_API_KEY || "";
-    let to = process.env.SIGNAL_EMAIL_TO || "";
-    try {
-      to = (await kv.get<string>("bot:alert_email")) || to;
-    } catch {
-      // Keep env fallback if KV unavailable.
-    }
+    const to = getSubscriberEmail() || process.env.SIGNAL_EMAIL_TO || "";
     const from = process.env.SIGNAL_EMAIL_FROM || "bebisday@gmail.com";
 
     if (resendApiKey && to) {
@@ -62,11 +48,7 @@ export async function POST(req: NextRequest) {
         subject: `DAvynci Signals: ${active.length} Active Call(s)`,
         html: `<h2>Active Trade Calls</h2><p>Time: ${body.timestamp_utc}</p><table border='1' cellpadding='6' cellspacing='0'><thead><tr><th>Pair</th><th>Signal</th><th>Lot Size</th><th>SL</th><th>TP</th><th>Score</th></tr></thead><tbody>${rows}</tbody></table>`,
       });
-      try {
-        await kv.set("bot:last_email_digest", digest);
-      } catch {
-        // Ignore KV write failures to avoid dropping successful email sends.
-      }
+      setLastDigest(digest);
     }
   }
 

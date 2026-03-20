@@ -1,6 +1,6 @@
 # Vercel Signals + Resend
 
-This app receives bot signal snapshots, stores them in Vercel KV, displays live BUY/SELL calls, and emails active signals via Resend.
+This app receives bot signal snapshots, keeps runtime state in memory (no KV), displays live BUY/SELL calls, and emails active signals via Resend.
 
 ## 1. Local Setup
 
@@ -15,13 +15,12 @@ Open http://localhost:3000
 ## 2. Deploy to Vercel
 
 1. Import `vercel-signals` as a new Vercel project.
-2. Add Vercel KV integration to the project.
-3. Set environment variables in Vercel project settings:
+2. Set environment variables in Vercel project settings:
    - `SIGNALS_WEBHOOK_TOKEN`
    - `RESEND_API_KEY`
    - `SIGNAL_EMAIL_FROM`
    - `SIGNAL_EMAIL_TO`
-4. Deploy.
+3. Deploy.
 
 Important: Resend requires a verified sender identity. If `SIGNAL_EMAIL_FROM=bebisday@gmail.com` is rejected, verify a domain/sender in Resend and use that verified address.
 
@@ -39,5 +38,8 @@ Restart the bot. It will POST signal snapshots each cycle.
 
 ## 4. Endpoints
 
-- `GET /api/signals` -> returns latest snapshot from KV
+- `GET /api/signals` -> returns latest snapshot from runtime memory
 - `POST /api/ingest` -> receives bot snapshot and triggers Resend email for new active calls
+
+## No-KV Note
+This version does not use KV. Snapshot/subscriber state is in-memory per active server runtime.

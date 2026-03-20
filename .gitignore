@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+bot.log
+bot_events.csv
+bot_signals.json
+bot_status.json
+
+vercel-signals/node_modules/
+vercel-signals/.next/
+vercel-signals/package-lock.json

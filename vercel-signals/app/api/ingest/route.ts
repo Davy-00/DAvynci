@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { actionableSignals, signalDigest, SignalSnapshot } from "@/lib/signals";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });

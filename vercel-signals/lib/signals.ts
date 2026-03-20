@@ -42,6 +42,13 @@ export type SignalSnapshot = {
     tp: number;
     profit: number;
   }>;
+  recent_events?: Array<{
+    timestamp_utc: string;
+    event_type: string;
+    symbol: string;
+    details: string;
+  }>;
+  recent_logs?: string[];
   signals: BotSignal[];
 };
 

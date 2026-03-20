@@ -44,6 +44,13 @@ type Snapshot = {
     tp: number;
     profit: number;
   }>;
+  recent_events?: Array<{
+    timestamp_utc: string;
+    event_type: string;
+    symbol: string;
+    details: string;
+  }>;
+  recent_logs?: string[];
   signals: Signal[];
 };
 
@@ -241,6 +248,45 @@ export default function HomePage() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Recent Events</h3>
+        {!(snapshot?.recent_events || []).length ? (
+          <p>No events yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Pair</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(snapshot?.recent_events || []).slice().reverse().map((e, i) => (
+                <tr key={`${e.timestamp_utc}-${i}`}>
+                  <td>{e.timestamp_utc}</td>
+                  <td>{e.event_type}</td>
+                  <td>{e.symbol}</td>
+                  <td>{e.details}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Recent Logs</h3>
+        {!(snapshot?.recent_logs || []).length ? (
+          <p>No logs yet.</p>
+        ) : (
+          <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+            {(snapshot?.recent_logs || []).join("\n")}
+          </pre>
         )}
       </div>
     </main>

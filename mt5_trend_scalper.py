@@ -78,6 +78,39 @@ def append_event(event_type: str, symbol: str, details: str) -> None:
         pass
 
 
+def read_recent_bot_events(max_rows: int = 30) -> List[Dict[str, str]]:
+    path = Path(CONFIG.bot_events_file)
+    if not path.exists():
+        return []
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return []
+    if df.empty:
+        return []
+    out: List[Dict[str, str]] = []
+    for _, row in df.tail(max_rows).iterrows():
+        out.append(
+            {
+                "timestamp_utc": str(row.get("timestamp_utc", "")),
+                "event_type": str(row.get("event_type", "")),
+                "symbol": str(row.get("symbol", "")),
+                "details": str(row.get("details", "")),
+            }
+        )
+    return out
+
+
+def read_recent_bot_logs(max_lines: int = 80) -> List[str]:
+    path = Path(CONFIG.bot_log_file)
+    if not path.exists():
+        return []
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore").splitlines()[-max_lines:]
+    except Exception:
+        return []
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -814,6 +847,8 @@ def write_signal_snapshot(now_utc: datetime, signals: List[Dict[str, object]]) -
             "margin_free": float(account.margin_free) if account is not None else 0.0,
         },
         "bot_positions": bot_positions,
+        "recent_events": read_recent_bot_events(),
+        "recent_logs": read_recent_bot_logs(),
         "signals": signals,
     }
     try:

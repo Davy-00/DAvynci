@@ -11,8 +11,8 @@ function unauthorized() {
 }
 
 export async function POST(req: NextRequest) {
-  const expected = process.env.SIGNALS_WEBHOOK_TOKEN || "";
-  const auth = req.headers.get("authorization") || "";
+  const expected = (process.env.SIGNALS_WEBHOOK_TOKEN || "").trim();
+  const auth = (req.headers.get("authorization") || "").trim();
   if (!expected || auth !== `Bearer ${expected}`) {
     return unauthorized();
   }

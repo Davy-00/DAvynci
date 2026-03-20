@@ -4,11 +4,11 @@
 
 body {
   margin: 0;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: "Plus Jakarta Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   background:
-    radial-gradient(circle at 10% 10%, #fdf1da 0%, #f8fbff 42%),
-    radial-gradient(circle at 90% 20%, #d8ecff 0%, #f8fbff 40%);
-  color: #1f2b3f;
+    radial-gradient(circle at 12% 8%, #fff7e8 0%, #f7faff 44%),
+    radial-gradient(circle at 90% 12%, #e7f3ff 0%, #f7faff 46%);
+  color: #162133;
 }
 
 main {
@@ -27,11 +27,15 @@ h3 {
 }
 
 .hero {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.82);
   border: 1px solid #d9e6f5;
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 12px;
+}
+
+.hero.minimal {
+  padding: 10px 14px;
 }
 
 .hero p {
@@ -39,36 +43,158 @@ h3 {
   color: #4a5f7b;
 }
 
-.tabs {
+.topbar {
+  position: sticky;
+  top: 8px;
+  z-index: 30;
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 6px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
   margin-bottom: 12px;
+  border: 1px solid #dbe8f8;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(10px);
 }
 
-.tab-btn {
-  border: 1px solid #cfe0f3;
+.logo-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: linear-gradient(140deg, #1f69d4, #0e9f6e);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 20px rgba(35, 97, 191, 0.25);
+}
+
+.logo-stroke {
+  width: 18px;
+  height: 10px;
+  border-left: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  transform: skew(-16deg) rotate(-28deg) translateY(-1px);
+}
+
+.logo-text strong {
+  display: block;
+  font-size: 15px;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.logo-text span {
+  display: block;
+  font-size: 11px;
+  color: #5b7290;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-pill {
+  background: #eef9f3;
+  border: 1px solid #c8ead7;
+  color: #0f7a51;
+  padding: 5px 10px;
   border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.menu-btn {
+  width: 40px;
+  height: 36px;
+  border: 1px solid #d3e2f4;
+  border-radius: 10px;
   background: #fff;
-  color: #214061;
-  white-space: nowrap;
-  padding: 8px 12px;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
   cursor: pointer;
 }
 
-.tab-btn.active {
-  background: #1f69d4;
-  color: #fff;
-  border-color: #1f69d4;
+.menu-btn span {
+  width: 18px;
+  height: 2px;
+  background: #20456d;
+  border-radius: 2px;
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 16, 34, 0.25);
+  z-index: 40;
+}
+
+.menu-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(320px, 85vw);
+  height: 100vh;
+  background: rgba(255, 255, 255, 0.96);
+  border-left: 1px solid #dbe8f8;
+  box-shadow: -16px 0 38px rgba(22, 40, 71, 0.16);
+  padding: 18px 14px;
+  z-index: 50;
+  transform: translateX(105%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-drawer.open {
+  transform: translateX(0);
+}
+
+.menu-title {
+  font-size: 12px;
+  color: #6e86a6;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.menu-link {
+  border: 1px solid #dde9f8;
+  border-radius: 11px;
+  background: #fff;
+  color: #224060;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.menu-link.active {
+  background: #eef4ff;
+  border-color: #bfd2f5;
+  color: #154eaa;
+  font-weight: 700;
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid #d8e6f5;
   border-radius: 14px;
   padding: 14px;
   margin-bottom: 12px;
+  box-shadow: 0 8px 20px rgba(25, 58, 109, 0.06);
 }
 
 .kpi-grid {
@@ -83,6 +209,12 @@ h3 {
   border: 1px solid #d6e4f3;
   border-radius: 12px;
   padding: 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(35, 75, 139, 0.09);
 }
 
 .kpi span {
@@ -157,6 +289,10 @@ td {
   color: #fff;
   border-radius: 10px;
   cursor: pointer;
+}
+
+.btn:hover {
+  filter: brightness(0.95);
 }
 
 .muted {
@@ -278,6 +414,15 @@ td {
 @media (max-width: 640px) {
   main {
     padding: 14px 10px 22px;
+  }
+
+  .topbar {
+    top: 6px;
+    padding: 10px;
+  }
+
+  .live-pill {
+    display: none;
   }
 
   .kpi-grid,

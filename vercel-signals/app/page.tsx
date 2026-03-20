@@ -148,6 +148,7 @@ export default function HomePage() {
   const [saveMsg, setSaveMsg] = useState("");
   const [pnlView, setPnlView] = useState<PnlView>("day");
   const [tab, setTab] = useState<MainTab>("overview");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
   const fingerprintRef = useRef("");
@@ -380,12 +381,34 @@ export default function HomePage() {
 
   return (
     <main>
-      <section className="hero">
-        <h1>DAvynci Live Trading Board</h1>
-        <p>Live mode: {liveMode === "stream" ? "Stream" : "Polling"} | Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
+      <header className="topbar">
+        <div className="logo-wrap" aria-label="DAvynci logo">
+          <div className="logo-mark">
+            <span className="logo-stroke" />
+          </div>
+          <div className="logo-text">
+            <strong>DAvynci</strong>
+            <span>Live Signals</span>
+          </div>
+        </div>
+
+        <div className="topbar-right">
+          <div className="live-pill">{liveMode === "stream" ? "LIVE STREAM" : "LIVE POLLING"}</div>
+          <button className="menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-controls="main-nav">
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
+      </header>
+
+      <section className="hero minimal">
+        <p>Last update: {snapshot?.timestamp_utc || "-"} ({lastUpdateAge})</p>
       </section>
 
-      <section className="tabs">
+      {menuOpen ? <div className="menu-backdrop" onClick={() => setMenuOpen(false)} /> : null}
+      <nav id="main-nav" className={`menu-drawer ${menuOpen ? "open" : ""}`}>
+        <div className="menu-title">Navigation</div>
         {([
           ["overview", "Overview"],
           ["pnl", "PnL Book"],
@@ -395,11 +418,18 @@ export default function HomePage() {
           ["logs", "Logs"],
           ["diagnostics", "Diagnostics"],
         ] as Array<[MainTab, string]>).map(([k, label]) => (
-          <button key={k} className={`tab-btn ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>
+          <button
+            key={k}
+            className={`menu-link ${tab === k ? "active" : ""}`}
+            onClick={() => {
+              setTab(k);
+              setMenuOpen(false);
+            }}
+          >
             {label}
           </button>
         ))}
-      </section>
+      </nav>
 
       {tab === "overview" ? (
         <>

@@ -68,6 +68,17 @@ export type SignalSnapshot = {
     equity: number;
     balance: number;
   }>;
+  backtest_summary?: Array<{
+    window: string;
+    symbol: string;
+    start_equity: number;
+    end_equity: number;
+    net_profit: number;
+    trade_count: number;
+    win_rate: number;
+    profit_factor: number | string;
+    max_drawdown_pct: number;
+  }>;
 };
 
 export function actionableSignals(snapshot: SignalSnapshot): BotSignal[] {

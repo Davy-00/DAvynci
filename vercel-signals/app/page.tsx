@@ -77,6 +77,17 @@ type Snapshot = {
     equity: number;
     balance: number;
   }>;
+  backtest_summary?: Array<{
+    window: string;
+    symbol: string;
+    start_equity: number;
+    end_equity: number;
+    net_profit: number;
+    trade_count: number;
+    win_rate: number;
+    profit_factor: number | string;
+    max_drawdown_pct: number;
+  }>;
   signals: Signal[];
 };
 
@@ -590,6 +601,12 @@ export default function HomePage() {
     return `${age}s ago`;
   }, [snapshot, nowMs]);
 
+  const isConnected = useMemo(() => {
+    if (!snapshot?.timestamp_utc) return false;
+    const ageSec = Math.max(0, Math.floor((nowMs - new Date(snapshot.timestamp_utc).getTime()) / 1000));
+    return ageSec <= 20;
+  }, [snapshot, nowMs]);
+
   const saveEmail = async () => {
     setSaveMsg("");
     const res = await fetch("/api/subscribers", {
@@ -777,6 +794,7 @@ export default function HomePage() {
 
       <section className="hero minimal">
         <p>Updated {lastUpdateAge}</p>
+        <p className={isConnected ? "up" : "down"}>{isConnected ? "Bot Connected" : "Bot Disconnected"}</p>
         <div className="hero-actions">
           <button
             className="btn btn-ghost"
@@ -939,6 +957,29 @@ export default function HomePage() {
               <button className="btn" onClick={saveEmail}>Save Email</button>
             </div>
             {saveMsg ? <p>{saveMsg}</p> : null}
+          </div>
+
+          <div className="card">
+            <h3>Backtested</h3>
+            {!(snapshot?.backtest_summary || []).length ? (
+              <p>No backtest summary in latest bot snapshot yet.</p>
+            ) : (
+              <div className="table-wrap"><table>
+                <thead><tr><th>Window</th><th>Net</th><th>Win Rate</th><th>PF</th><th>DD</th><th>Trades</th></tr></thead>
+                <tbody>
+                  {(snapshot?.backtest_summary || []).map((b, i) => (
+                    <tr key={`${b.window}-${i}`}>
+                      <td>{b.window}</td>
+                      <td className={Number(b.net_profit || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(b.net_profit || 0))}</td>
+                      <td>{Number(b.win_rate || 0).toFixed(2)}%</td>
+                      <td>{String(b.profit_factor ?? "-")}</td>
+                      <td>{Number(b.max_drawdown_pct || 0).toFixed(2)}%</td>
+                      <td>{Number(b.trade_count || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
           </div>
         </>
       ) : null}

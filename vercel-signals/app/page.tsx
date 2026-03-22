@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const STARTING_BALANCE = 200;
+const STARTING_BALANCE = 30;
 
 type PnlView = "day" | "week" | "month";
 type MainTab = "overview" | "analytics" | "pnl" | "signals" | "positions" | "trades" | "diary" | "events" | "logs" | "diagnostics";
@@ -39,6 +39,7 @@ type Snapshot = {
     login?: number;
     server?: string;
     balance?: number;
+    starting_balance?: number;
     equity?: number;
     margin_free?: number;
   };
@@ -92,6 +93,23 @@ type Snapshot = {
 };
 
 type PerfPoint = { timestamp_utc: string; equity: number; balance: number };
+declare global {
+  interface Window {
+    TradingView?: {
+      widget: new (config: Record<string, unknown>) => unknown;
+    };
+  }
+}
+
+function toTradingViewSymbol(raw: string): string {
+  const s = String(raw || "").toUpperCase();
+  if (s.includes("BTC")) return "BITSTAMP:BTCUSD";
+  if (s.includes("XAU") || s.includes("GOLD")) return "OANDA:XAUUSD";
+  if (s.includes("EURUSD")) return "OANDA:EURUSD";
+  if (s.includes("USDJPY")) return "OANDA:USDJPY";
+  return "BITSTAMP:BTCUSD";
+}
+
 type DiaryEntry = {
   trade_id: string;
   created_at_utc: string;
@@ -230,6 +248,7 @@ export default function HomePage() {
   const [diaryMsg, setDiaryMsg] = useState("");
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
+    const tvContainerRef = useRef<HTMLDivElement | null>(null);
   const fingerprintRef = useRef("");
 
   const applySnapshot = (next: Snapshot | null) => {
@@ -326,6 +345,13 @@ export default function HomePage() {
       .sort((a, b) => a.timestamp_utc.localeCompare(b.timestamp_utc));
   }, [snapshot]);
 
+  const startingBalance = useMemo(() => {
+    const fromSnapshot = Number(snapshot?.account?.starting_balance ?? NaN);
+    if (Number.isFinite(fromSnapshot) && fromSnapshot > 0) return fromSnapshot;
+    if (performancePoints.length) return Number(performancePoints[0].balance);
+    return STARTING_BALANCE;
+  }, [snapshot, performancePoints]);
+
   const activeSignals = useMemo(
     () =>
       (snapshot?.signals || []).filter(
@@ -333,6 +359,59 @@ export default function HomePage() {
       ),
     [snapshot]
   );
+
+  const pendingOrders = useMemo(
+    () =>
+      (snapshot?.signals || []).filter((s) => ["buy_limit", "sell_limit"].includes(String(s.side || "").toLowerCase())),
+    [snapshot]
+  );
+
+  const openPositions = useMemo(() => snapshot?.bot_positions || [], [snapshot]);
+
+  const tvSymbol = useMemo(() => {
+    const fromSignal = (snapshot?.signals || [])[0]?.symbol;
+    const fromList = (snapshot as { symbols?: string[] } | null)?.symbols?.[0];
+    return toTradingViewSymbol(String(fromList || fromSignal || "BTCUSD"));
+  }, [snapshot]);
+
+  useEffect(() => {
+    const mountWidget = () => {
+      if (!tvContainerRef.current || !window.TradingView) return;
+      tvContainerRef.current.innerHTML = "";
+      // TradingView widget: visual market context for pending/open bot orders.
+      new window.TradingView.widget({
+        autosize: true,
+        symbol: tvSymbol,
+        interval: "5",
+        timezone: "Etc/UTC",
+        theme: "light",
+        style: "1",
+        locale: "en",
+        hide_top_toolbar: false,
+        hide_legend: false,
+        allow_symbol_change: true,
+        container_id: "tv-live-widget",
+      });
+    };
+
+    if (window.TradingView) {
+      mountWidget();
+      return;
+    }
+
+    const existing = document.getElementById("tradingview-widget-script") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", mountWidget, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "tradingview-widget-script";
+    script.src = "https://s3.tradingview.com/tv.js";
+    script.async = true;
+    script.onload = mountWidget;
+    document.body.appendChild(script);
+  }, [tvSymbol]);
 
   const floatingPnl = useMemo(
     () => (snapshot?.bot_positions || []).reduce((acc, p) => acc + Number(p.profit || 0), 0),
@@ -346,12 +425,12 @@ export default function HomePage() {
       ? currentEquity
       : performancePoints.length
         ? performancePoints[performancePoints.length - 1].equity
-        : STARTING_BALANCE;
+        : startingBalance;
     const lastBal = Number.isFinite(currentBalance)
       ? currentBalance
       : performancePoints.length
         ? performancePoints[performancePoints.length - 1].balance
-        : STARTING_BALANCE;
+        : startingBalance;
 
     const latestTs = snapshot?.timestamp_utc ? new Date(snapshot.timestamp_utc) : new Date();
     const dayStart = new Date(Date.UTC(latestTs.getUTCFullYear(), latestTs.getUTCMonth(), latestTs.getUTCDate()));
@@ -363,23 +442,23 @@ export default function HomePage() {
       return performancePoints.find((p) => new Date(p.timestamp_utc).getTime() >= ms) || null;
     };
 
-    const dayBase = firstAtOrAfter(dayStart)?.equity ?? STARTING_BALANCE;
-    const weekBase = firstAtOrAfter(weekStart)?.equity ?? STARTING_BALANCE;
-    const monthBase = firstAtOrAfter(monthStart)?.equity ?? STARTING_BALANCE;
+    const dayBase = firstAtOrAfter(dayStart)?.equity ?? startingBalance;
+    const weekBase = firstAtOrAfter(weekStart)?.equity ?? startingBalance;
+    const monthBase = firstAtOrAfter(monthStart)?.equity ?? startingBalance;
 
     return {
       day: lastEq - dayBase,
       week: lastEq - weekBase,
       month: lastEq - monthBase,
-      realized: lastBal - STARTING_BALANCE,
-      net: lastEq - STARTING_BALANCE,
+      realized: lastBal - startingBalance,
+      net: lastEq - startingBalance,
       currentEquity: lastEq,
       currentBalance: lastBal,
       dayBase,
       weekBase,
       monthBase,
     };
-  }, [snapshot, performancePoints]);
+  }, [snapshot, performancePoints, startingBalance]);
 
   const pnlBookRows = useMemo(() => {
     const dayClose = new Map<string, number>();
@@ -387,7 +466,7 @@ export default function HomePage() {
       dayClose.set(dateKeyUtc(p.timestamp_utc), p.equity);
     }
     const dayKeys = Array.from(dayClose.keys()).sort();
-    const dayRows = dayKeys.slice(-30).reverse().map((k) => ({ label: k, pnl: (dayClose.get(k) || 0) - STARTING_BALANCE }));
+    const dayRows = dayKeys.slice(-30).reverse().map((k) => ({ label: k, pnl: (dayClose.get(k) || 0) - startingBalance }));
 
     const weekMap = new Map<string, number>();
     for (const [k, v] of dayClose.entries()) {
@@ -398,7 +477,7 @@ export default function HomePage() {
       .sort()
       .slice(-12)
       .reverse()
-      .map((wk) => ({ label: `Week ${wk}`, pnl: (weekMap.get(wk) || 0) - STARTING_BALANCE }));
+      .map((wk) => ({ label: `Week ${wk}`, pnl: (weekMap.get(wk) || 0) - startingBalance }));
 
     const latest = snapshot?.timestamp_utc ? new Date(snapshot.timestamp_utc) : new Date();
     const monthStart = startOfMonthUtc(latest);
@@ -412,7 +491,7 @@ export default function HomePage() {
       monthCells.push({
         key,
         day: d.getUTCDate(),
-        pnl: dayClose.has(key) ? (dayClose.get(key) || 0) - STARTING_BALANCE : null,
+        pnl: dayClose.has(key) ? (dayClose.get(key) || 0) - startingBalance : null,
         isCurrentMonth: d.getUTCMonth() === latest.getUTCMonth() && d.getUTCFullYear() === latest.getUTCFullYear(),
       });
     }
@@ -423,7 +502,7 @@ export default function HomePage() {
       monthCells,
       monthName: latest.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
     };
-  }, [performancePoints, snapshot]);
+  }, [performancePoints, snapshot, startingBalance]);
 
   const performance = useMemo(() => {
     if (!performancePoints.length) {
@@ -436,11 +515,11 @@ export default function HomePage() {
         minY: 0,
         maxY: 1,
         gridLines: [] as number[],
-        currentEq: STARTING_BALANCE,
-        currentBal: STARTING_BALANCE,
+        currentEq: startingBalance,
+        currentBal: startingBalance,
         currentNet: 0,
-        highEq: STARTING_BALANCE,
-        lowEq: STARTING_BALANCE,
+        highEq: startingBalance,
+        lowEq: startingBalance,
         changePct: 0,
         perMinute: 0,
         tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
@@ -467,7 +546,7 @@ export default function HomePage() {
         .map((x) => x[1]);
     }
 
-    const withNet = points.map((p) => ({ ...p, net: p.equity - STARTING_BALANCE, tsMs: new Date(p.timestamp_utc).getTime() }));
+    const withNet = points.map((p) => ({ ...p, net: p.equity - startingBalance, tsMs: new Date(p.timestamp_utc).getTime() }));
     if (!withNet.length) {
       return {
         points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
@@ -478,11 +557,11 @@ export default function HomePage() {
         minY: 0,
         maxY: 1,
         gridLines: [] as number[],
-        currentEq: STARTING_BALANCE,
-        currentBal: STARTING_BALANCE,
+        currentEq: startingBalance,
+        currentBal: startingBalance,
         currentNet: 0,
-        highEq: STARTING_BALANCE,
-        lowEq: STARTING_BALANCE,
+        highEq: startingBalance,
+        lowEq: startingBalance,
         changePct: 0,
         perMinute: 0,
         tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
@@ -513,7 +592,7 @@ export default function HomePage() {
     if (showBalanceSeries) selectedValues.push(...smoothed.map((p) => p.balance));
     if (showNetSeries) selectedValues.push(...smoothed.map((p) => p.net));
     if (!selectedValues.length) selectedValues.push(...smoothed.map((p) => p.equity));
-    if (chartScale === "fromStart") selectedValues.push(STARTING_BALANCE);
+    if (chartScale === "fromStart") selectedValues.push(startingBalance);
 
     const min = Math.min(...selectedValues);
     const max = Math.max(...selectedValues);
@@ -593,6 +672,7 @@ export default function HomePage() {
     showBalanceSeries,
     showNetSeries,
     showCloseMarkers,
+    startingBalance,
   ]);
 
   const lastUpdateAge = useMemo(() => {
@@ -711,7 +791,7 @@ export default function HomePage() {
     const perf = performancePoints;
     let maxDrawdown = 0;
     let maxDrawdownPct = 0;
-    let peak = STARTING_BALANCE;
+    let peak = startingBalance;
     for (const p of perf) {
       if (p.equity > peak) peak = p.equity;
       const dd = peak - p.equity;
@@ -728,7 +808,7 @@ export default function HomePage() {
     }
     const months = Array.from(byMonth.keys()).sort();
     const monthlyRows: Array<{ month: string; equity: number; gain: number; gainPct: number }> = [];
-    let prevEq = STARTING_BALANCE;
+    let prevEq = startingBalance;
     for (const m of months) {
       const eq = byMonth.get(m) || prevEq;
       const gain = eq - prevEq;
@@ -738,9 +818,9 @@ export default function HomePage() {
     }
     monthlyRows.reverse();
 
-    const currentEq = Number(snapshot?.account?.equity ?? STARTING_BALANCE);
-    const absoluteGain = currentEq - STARTING_BALANCE;
-    const absoluteGainPct = STARTING_BALANCE > 0 ? (absoluteGain / STARTING_BALANCE) * 100 : 0;
+    const currentEq = Number(snapshot?.account?.equity ?? startingBalance);
+    const absoluteGain = currentEq - startingBalance;
+    const absoluteGainPct = startingBalance > 0 ? (absoluteGain / startingBalance) * 100 : 0;
     const winRate = total ? (wins / total) * 100 : 0;
 
     return {
@@ -767,7 +847,7 @@ export default function HomePage() {
       absoluteGainPct,
       monthlyRows,
     };
-  }, [snapshot, performancePoints]);
+  }, [snapshot, performancePoints, startingBalance]);
 
   return (
     <main>
@@ -848,7 +928,7 @@ export default function HomePage() {
       {tab === "overview" ? (
         <>
           <div className="kpi-grid">
-            <div className="kpi"><span>Start</span><strong>{fmtMoney(STARTING_BALANCE)}</strong></div>
+            <div className="kpi"><span>Start</span><strong>{fmtMoney(startingBalance)}</strong></div>
             <div className="kpi"><span>Balance</span><strong>{fmtMoney(uiBalance)}</strong></div>
             <div className="kpi"><span>Equity</span><strong>{fmtMoney(uiEquity)}</strong></div>
             <div className="kpi"><span>Trades Today</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
@@ -856,9 +936,19 @@ export default function HomePage() {
             <div className="kpi"><span>Net</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
           </div>
 
-          <div className="card">
-            <h3>Performance</h3>
-            <div className="chart-filters">
+          <div className="card performance-card">
+            <div className="performance-head">
+              <div>
+                <h3 className="performance-title">Performance Cockpit</h3>
+                <p className="performance-subtitle">Live equity, balance, and execution outcome over time.</p>
+              </div>
+              <div className="performance-meta">
+                <span>Last update</span>
+                <strong>{lastUpdateAge}</strong>
+              </div>
+            </div>
+
+            <div className="chart-filters performance-filters">
               <label>
                 Range
                 <select value={chartRange} onChange={(e) => setChartRange(e.target.value as ChartRange)}>
@@ -897,7 +987,7 @@ export default function HomePage() {
               </label>
             </div>
 
-            <div className="series-toggles">
+            <div className="series-toggles performance-toggles">
               <label><input type="checkbox" checked={showEquitySeries} onChange={(e) => setShowEquitySeries(e.target.checked)} /> Equity</label>
               <label><input type="checkbox" checked={showBalanceSeries} onChange={(e) => setShowBalanceSeries(e.target.checked)} /> Balance</label>
               <label><input type="checkbox" checked={showNetSeries} onChange={(e) => setShowNetSeries(e.target.checked)} /> Net PnL</label>
@@ -916,33 +1006,35 @@ export default function HomePage() {
                   <div><span>Speed</span><strong className={performance.perMinute >= 0 ? "up" : "down"}>{fmtMoney(performance.perMinute)}/m</strong></div>
                 </div>
 
-                <svg viewBox="0 0 920 320" width="100%" height="320" role="img" aria-label="Filtered performance chart">
-                  <defs>
-                    <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#20b486" stopOpacity="0.36" />
-                      <stop offset="100%" stopColor="#20b486" stopOpacity="0.03" />
-                    </linearGradient>
-                    <radialGradient id="chart-bg" cx="50%" cy="10%" r="75%">
-                      <stop offset="0%" stopColor="#ffffff" />
-                      <stop offset="100%" stopColor="#f3f8ff" />
-                    </radialGradient>
-                  </defs>
-                  <rect x="0" y="0" width="920" height="320" fill="url(#chart-bg)" rx="12" />
-                  {performance.gridLines.map((y, i) => (
-                    <line key={`g-${i}`} x1="18" y1={y} x2="902" y2={y} stroke="#dfe8f4" strokeDasharray="4 6" />
-                  ))}
-                  {showEquitySeries ? <path d={performance.equityAreaPath} fill="url(#eq-fill)" /> : null}
-                  {showBalanceSeries ? <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.9" /> : null}
-                  {showEquitySeries ? <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" /> : null}
-                  {showNetSeries ? <path d={performance.netPath} fill="none" stroke="#9b2c2c" strokeWidth="2" strokeDasharray="5 4" /> : null}
-                  {performance.tradeMarkers.map((m, i) => (
-                    <circle key={`mk-${i}`} cx={m.x} cy={m.y} r="5" fill={m.pnl >= 0 ? "#0e9f6e" : "#b9303d"} stroke="#ffffff" strokeWidth="2">
-                      <title>{`${m.symbol} ${m.closeReason} ${fmtMoney(m.pnl)}`}</title>
-                    </circle>
-                  ))}
-                </svg>
-                <p>
-                  Range {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)} | Points {performance.points.length}
+                <div className="perf-chart-shell">
+                  <svg viewBox="0 0 920 320" width="100%" height="320" role="img" aria-label="Filtered performance chart">
+                    <defs>
+                      <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#20b486" stopOpacity="0.36" />
+                        <stop offset="100%" stopColor="#20b486" stopOpacity="0.03" />
+                      </linearGradient>
+                      <radialGradient id="chart-bg" cx="50%" cy="10%" r="75%">
+                        <stop offset="0%" stopColor="#ffffff" />
+                        <stop offset="100%" stopColor="#f3f8ff" />
+                      </radialGradient>
+                    </defs>
+                    <rect x="0" y="0" width="920" height="320" fill="url(#chart-bg)" rx="12" />
+                    {performance.gridLines.map((y, i) => (
+                      <line key={`g-${i}`} x1="18" y1={y} x2="902" y2={y} stroke="#dfe8f4" strokeDasharray="4 6" />
+                    ))}
+                    {showEquitySeries ? <path d={performance.equityAreaPath} fill="url(#eq-fill)" /> : null}
+                    {showBalanceSeries ? <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.9" /> : null}
+                    {showEquitySeries ? <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" /> : null}
+                    {showNetSeries ? <path d={performance.netPath} fill="none" stroke="#9b2c2c" strokeWidth="2" strokeDasharray="5 4" /> : null}
+                    {performance.tradeMarkers.map((m, i) => (
+                      <circle key={`mk-${i}`} cx={m.x} cy={m.y} r="5" fill={m.pnl >= 0 ? "#0e9f6e" : "#b9303d"} stroke="#ffffff" strokeWidth="2">
+                        <title>{`${m.symbol} ${m.closeReason} ${fmtMoney(m.pnl)}`}</title>
+                      </circle>
+                    ))}
+                  </svg>
+                </div>
+                <p className="performance-footnote">
+                  Range {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)} | Data points {performance.points.length}
                 </p>
               </>
             ) : (
@@ -951,6 +1043,62 @@ export default function HomePage() {
           </div>
 
           <div className="card">
+                      <div className="card tv-card">
+                        <div className="tv-head">
+                          <h3>TradingView Live Chart</h3>
+                          <span className="muted">{tvSymbol} · M5</span>
+                        </div>
+                        <div className="tv-chart-shell">
+                          <div id="tv-live-widget" ref={tvContainerRef} className="tv-chart" />
+                        </div>
+
+                        <div className="tv-order-grid">
+                          <div>
+                            <h4>Pending Orders</h4>
+                            {!pendingOrders.length ? (
+                              <p className="muted">No pending orders right now.</p>
+                            ) : (
+                              <div className="table-wrap"><table>
+                                <thead><tr><th>Symbol</th><th>Side</th><th>Lot</th><th>SL</th><th>TP</th></tr></thead>
+                                <tbody>
+                                  {pendingOrders.slice(0, 20).map((o, i) => (
+                                    <tr key={`${o.symbol}-${o.side}-${i}`}>
+                                      <td>{o.symbol}</td>
+                                      <td>{signalType(o)}</td>
+                                      <td>{Number(o.lot || 0).toFixed(2)}</td>
+                                      <td>{Number(o.sl || 0).toFixed(2)}</td>
+                                      <td>{Number(o.tp || 0).toFixed(2)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table></div>
+                            )}
+                          </div>
+
+                          <div>
+                            <h4>Open Positions</h4>
+                            {!openPositions.length ? (
+                              <p className="muted">No open positions right now.</p>
+                            ) : (
+                              <div className="table-wrap"><table>
+                                <thead><tr><th>Symbol</th><th>Type</th><th>Entry</th><th>SL</th><th>TP</th><th>PnL</th></tr></thead>
+                                <tbody>
+                                  {openPositions.slice(0, 20).map((p) => (
+                                    <tr key={String(p.ticket)}>
+                                      <td>{p.symbol}</td>
+                                      <td>{String(p.type).toUpperCase()}</td>
+                                      <td>{Number(p.price_open || 0).toFixed(2)}</td>
+                                      <td>{Number(p.sl || 0).toFixed(2)}</td>
+                                      <td>{Number(p.tp || 0).toFixed(2)}</td>
+                                      <td className={Number(p.profit || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(p.profit || 0))}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table></div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
             <h3>Email Alerts</h3>
             <div className="row">
               <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
@@ -1072,7 +1220,7 @@ export default function HomePage() {
           {pnlView === "day" ? (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date (UTC)</th><th>Equity vs $200</th></tr></thead>
+                <thead><tr><th>Date (UTC)</th><th>Equity vs Start</th></tr></thead>
                 <tbody>
                   {pnlBookRows.dayRows.map((r) => (
                     <tr key={r.label}><td>{r.label}</td><td className={r.pnl >= 0 ? "up" : "down"}>{fmtMoney(r.pnl)}</td></tr>
@@ -1085,7 +1233,7 @@ export default function HomePage() {
           {pnlView === "week" ? (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Week</th><th>Equity vs $200</th></tr></thead>
+                <thead><tr><th>Week</th><th>Equity vs Start</th></tr></thead>
                 <tbody>
                   {pnlBookRows.weekRows.map((r) => (
                     <tr key={r.label}><td>{r.label}</td><td className={r.pnl >= 0 ? "up" : "down"}>{fmtMoney(r.pnl)}</td></tr>

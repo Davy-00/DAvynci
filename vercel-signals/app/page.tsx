@@ -28,6 +28,7 @@ type Snapshot = {
   halted: boolean;
   halt_reason: string;
   dry_run?: boolean;
+  symbols?: string[];
   guard_state?: {
     today_opened_trades?: number;
     today_consecutive_losses?: number;

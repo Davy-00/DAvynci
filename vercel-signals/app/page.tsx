@@ -652,7 +652,16 @@ export default function HomePage() {
       }))
       .filter((p) => Number.isFinite(p.tsMs) && Number.isFinite(p.equity) && Number.isFinite(p.balance));
 
-    if (!points.length) {
+    const fallbackTs = snapshot?.timestamp_utc || new Date().toISOString();
+    const fallbackPoint = {
+      ts: fallbackTs,
+      tsMs: new Date(fallbackTs).getTime(),
+      equity: Number(snapshot?.account?.equity ?? startingBalance),
+      balance: Number(snapshot?.account?.balance ?? startingBalance),
+    };
+    const safePoints = points.length ? points : [fallbackPoint];
+
+    if (!safePoints.length) {
       return {
         points: [] as Array<{
           ts: string;
@@ -681,7 +690,7 @@ export default function HomePage() {
     }
 
     let peak = startingBalance;
-    const enriched = points.map((p) => {
+    const enriched = safePoints.map((p) => {
       if (p.equity > peak) peak = p.equity;
       const net = p.equity - startingBalance;
       const growthPct = startingBalance > 0 ? (net / startingBalance) * 100 : 0;
@@ -745,7 +754,7 @@ export default function HomePage() {
       ageHours,
       growthPerHour,
     };
-  }, [performancePoints, startingBalance]);
+  }, [performancePoints, snapshot, startingBalance]);
 
   return (
     <main>
@@ -980,6 +989,7 @@ export default function HomePage() {
             <h3>Account Growth Ledger</h3>
             <p className="muted">Precise timeline of balance/equity progression from the account start value.</p>
             <div className="growth-meta">
+              <div><span>Starting Equity</span><strong>{fmtMoney(startingBalance)}</strong></div>
               <div><span>Samples</span><strong>{growthLedger.samples}</strong></div>
               <div><span>Tracked Hours</span><strong>{growthLedger.ageHours.toFixed(2)}</strong></div>
               <div><span>Growth / Hour</span><strong className={growthLedger.growthPerHour >= 0 ? "up" : "down"}>{fmtMoney(growthLedger.growthPerHour)}</strong></div>

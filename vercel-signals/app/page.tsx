@@ -227,54 +227,27 @@ export default function HomePage() {
   useEffect(() => {
     let mounted = true;
     let inFlight = false;
-    let es: EventSource | null = null;
-    let streamHealthy = false;
 
     const loadSignals = async () => {
-      if (streamHealthy) return;
       if (inFlight) return;
       inFlight = true;
       try {
-        const res = await fetch(`/api/signals?t=${Date.now()}`, { cache: "no-store" });
+        const res = await fetch(`/api/ingest?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
-        if (mounted) applySnapshot(data);
+        if (mounted) {
+          applySnapshot(data);
+          setLiveMode("polling");
+        }
       } finally {
         inFlight = false;
       }
     };
-
-    try {
-      es = new EventSource("/api/stream");
-      es.onopen = () => {
-        streamHealthy = true;
-        if (mounted) setLiveMode("stream");
-      };
-      es.addEventListener("snapshot", (evt) => {
-        if (!mounted) return;
-        const msg = evt as MessageEvent;
-        try {
-          streamHealthy = true;
-          applySnapshot(JSON.parse(msg.data));
-          setLiveMode("stream");
-        } catch {
-          // Ignore malformed events and rely on fallback polling.
-        }
-      });
-      es.onerror = () => {
-        streamHealthy = false;
-        if (mounted) setLiveMode("polling");
-      };
-    } catch {
-      streamHealthy = false;
-      setLiveMode("polling");
-    }
 
     loadSignals();
     const poll = setInterval(loadSignals, 100);
     return () => {
       mounted = false;
       clearInterval(poll);
-      if (es) es.close();
     };
   }, []);
 

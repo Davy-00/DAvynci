@@ -1,13 +1,17 @@
 import { Resend } from "resend";
 import { NextRequest, NextResponse } from "next/server";
 import { actionableSignals, signalDigest, SignalSnapshot, signalLabel } from "@/lib/signals";
-import { getLastDigest, getSubscriberEmail, setLastDigest, setSnapshot } from "@/lib/runtime-store";
+import { getLastDigest, getSnapshot, getSubscriberEmail, setLastDigest, setSnapshot } from "@/lib/runtime-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+}
+
+export async function GET() {
+  return NextResponse.json(getSnapshot());
 }
 
 export async function POST(req: NextRequest) {

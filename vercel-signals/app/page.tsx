@@ -194,7 +194,6 @@ export default function HomePage() {
   const [saveMsg, setSaveMsg] = useState("");
   const [pnlView, setPnlView] = useState<PnlView>("day");
   const [tab, setTab] = useState<MainTab>("overview");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [diary, setDiary] = useState<Record<string, DiaryEntry>>({});
   const [selectedTradeId, setSelectedTradeId] = useState("");
   const [draft, setDraft] = useState({ setup: "", emotion: "", mistakes: "", lesson: "", rating: 0 });
@@ -204,8 +203,6 @@ export default function HomePage() {
   const [mobileDeckIndex, setMobileDeckIndex] = useState(0);
   const mobileDeckRef = useRef<HTMLDivElement | null>(null);
   const fingerprintRef = useRef("");
-
-  const closeMenu = () => setMenuOpen(false);
 
   const applySnapshot = (next: Snapshot | null) => {
     const fp = snapshotFingerprint(next);
@@ -263,36 +260,6 @@ export default function HomePage() {
       if (es) es.close();
     };
   }, []);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    const onKeyDown = (evt: KeyboardEvent) => {
-      if (evt.key === "Escape") closeMenu();
-    };
-
-    const onPointerDown = (evt: MouseEvent | TouchEvent) => {
-      const target = evt.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest("#main-nav")) return;
-      if (target.closest(".menu-btn")) return;
-      closeMenu();
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown, { passive: true });
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [menuOpen]);
-
-  useEffect(() => {
-    // Keep drawer state in sync with tab changes from any trigger.
-    closeMenu();
-  }, [tab]);
 
   useEffect(() => {
     let mounted = true;
@@ -733,23 +700,6 @@ export default function HomePage() {
 
         <div className="topbar-right">
           <div className="live-pill">{liveMode === "stream" ? "LIVE STREAM" : "LIVE POLLING"}</div>
-          <button
-            className="menu-btn"
-            onClick={() => {
-              if (menuOpen) {
-                closeMenu();
-                return;
-              }
-              setMenuOpen(true);
-            }}
-            aria-expanded={menuOpen}
-            aria-controls="main-nav"
-            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
         </div>
       </header>
 
@@ -761,7 +711,6 @@ export default function HomePage() {
             className="btn btn-ghost"
             onClick={() => {
               setTab("trades");
-              setMenuOpen(false);
             }}
           >
             History
@@ -770,46 +719,12 @@ export default function HomePage() {
             className="btn btn-ghost"
             onClick={() => {
               setTab("analytics");
-              setMenuOpen(false);
             }}
           >
             Analytics
           </button>
         </div>
       </section>
-
-      {menuOpen ? <div className="menu-backdrop" onClick={closeMenu} /> : null}
-      <nav id="main-nav" className={`menu-drawer ${menuOpen ? "open" : ""}`}>
-        <div className="menu-head">
-          <div className="menu-title">Navigation</div>
-          <button type="button" className="menu-close" onClick={closeMenu} aria-label="Close navigation">
-            x
-          </button>
-        </div>
-        {([
-          ["overview", "Overview"],
-          ["analytics", "Analytics"],
-          ["pnl", "PnL Book"],
-          ["signals", "Signals"],
-          ["positions", "Positions"],
-          ["trades", "History"],
-          ["diary", "Trading Diary"],
-          ["events", "Events"],
-          ["logs", "Logs"],
-          ["diagnostics", "Diagnostics"],
-        ] as Array<[MainTab, string]>).map(([k, label]) => (
-          <button
-            key={k}
-            className={`menu-link ${tab === k ? "active" : ""}`}
-            onClick={() => {
-              setTab(k);
-              closeMenu();
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
 
       {tab === "overview" ? (
         <>

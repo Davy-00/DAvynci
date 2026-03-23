@@ -852,21 +852,38 @@ export default function HomePage() {
           </div>
 
           <div className="card">
-            <h3>Backtested</h3>
-            {!(snapshot?.backtest_summary || []).length ? (
-              <p>No backtest summary in latest bot snapshot yet.</p>
+            <h3>Positions History (All Closed)</h3>
+            {!closedTrades.length ? (
+              <p>No closed positions yet.</p>
             ) : (
               <div className="table-wrap"><table>
-                <thead><tr><th>Window</th><th>Net</th><th>Win Rate</th><th>PF</th><th>DD</th><th>Trades</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Position ID</th>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Lot</th>
+                    <th>Entry</th>
+                    <th>Close</th>
+                    <th>PnL</th>
+                    <th>Close Type</th>
+                    <th>Opened (UTC)</th>
+                    <th>Closed (UTC)</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {(snapshot?.backtest_summary || []).map((b, i) => (
-                    <tr key={`${b.window}-${i}`}>
-                      <td>{b.window}</td>
-                      <td className={Number(b.net_profit || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(b.net_profit || 0))}</td>
-                      <td>{Number(b.win_rate || 0).toFixed(2)}%</td>
-                      <td>{String(b.profit_factor ?? "-")}</td>
-                      <td>{Number(b.max_drawdown_pct || 0).toFixed(2)}%</td>
-                      <td>{Number(b.trade_count || 0)}</td>
+                  {closedTrades.map((t, i) => (
+                    <tr key={`${t.position_id}-${i}`}>
+                      <td>{t.position_id}</td>
+                      <td>{t.symbol}</td>
+                      <td>{String(t.side || "").toUpperCase()}</td>
+                      <td>{Number(t.volume || 0).toFixed(2)}</td>
+                      <td>{Number(t.entry_price || 0).toFixed(5)}</td>
+                      <td>{Number(t.close_price || 0).toFixed(5)}</td>
+                      <td className={Number(t.pnl || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(t.pnl || 0))}</td>
+                      <td>{t.close_reason || "-"}</td>
+                      <td>{t.entry_time_utc || "-"}</td>
+                      <td>{t.close_time_utc || "-"}</td>
                     </tr>
                   ))}
                 </tbody>

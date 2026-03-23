@@ -144,6 +144,19 @@ function fmtMoney(v: number): string {
   return `$${v.toFixed(2)}`;
 }
 
+function tradeSortTs(t: { close_time_utc?: string; entry_time_utc?: string; position_id?: number }): number {
+  const raw = String(t.close_time_utc || t.entry_time_utc || "").trim();
+  const tryParse = (value: string): number => {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : NaN;
+  };
+  let ts = tryParse(raw);
+  if (!Number.isFinite(ts) && raw.includes(" ")) ts = tryParse(raw.replace(" ", "T"));
+  if (!Number.isFinite(ts) && raw && !raw.endsWith("Z")) ts = tryParse(`${raw}Z`);
+  if (Number.isFinite(ts)) return ts;
+  return Number(t.position_id || 0);
+}
+
 function snapshotFingerprint(s: Snapshot | null): string {
   if (!s) return "";
   const eq = Number(s.account?.equity ?? 0).toFixed(2);
@@ -325,9 +338,9 @@ export default function HomePage() {
     const rows = [...(snapshot?.closed_trades || [])];
     if (!rows.length) return null;
     rows.sort((a, b) => {
-      const aTs = Date.parse(String(a.close_time_utc || a.entry_time_utc || ""));
-      const bTs = Date.parse(String(b.close_time_utc || b.entry_time_utc || ""));
-      if (Number.isFinite(aTs) && Number.isFinite(bTs) && aTs !== bTs) return bTs - aTs;
+      const aTs = tradeSortTs(a);
+      const bTs = tradeSortTs(b);
+      if (aTs !== bTs) return bTs - aTs;
       return Number(b.position_id || 0) - Number(a.position_id || 0);
     });
     return rows[0];
@@ -474,9 +487,9 @@ export default function HomePage() {
   const closedTrades = useMemo(() => {
     const rows = [...(snapshot?.closed_trades || [])];
     rows.sort((a, b) => {
-      const aTs = Date.parse(String(a.close_time_utc || a.entry_time_utc || ""));
-      const bTs = Date.parse(String(b.close_time_utc || b.entry_time_utc || ""));
-      if (Number.isFinite(aTs) && Number.isFinite(bTs) && aTs !== bTs) return bTs - aTs;
+      const aTs = tradeSortTs(a);
+      const bTs = tradeSortTs(b);
+      if (aTs !== bTs) return bTs - aTs;
       return Number(b.position_id || 0) - Number(a.position_id || 0);
     });
     return rows;
@@ -491,6 +504,10 @@ export default function HomePage() {
   useEffect(() => {
     setHistoryPage((prev) => Math.min(prev, historyTotalPages));
   }, [historyTotalPages]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [closedTrades[0]?.position_id, closedTrades.length]);
 
   useEffect(() => {
     if (!closedTrades.length) return;

@@ -249,7 +249,9 @@ export default function HomePage() {
   const [diaryMsg, setDiaryMsg] = useState("");
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
-    const tvContainerRef = useRef<HTMLDivElement | null>(null);
+  const [mobileDeckIndex, setMobileDeckIndex] = useState(0);
+  const tvContainerRef = useRef<HTMLDivElement | null>(null);
+  const mobileDeckRef = useRef<HTMLDivElement | null>(null);
   const fingerprintRef = useRef("");
 
   const applySnapshot = (next: Snapshot | null) => {
@@ -379,6 +381,25 @@ export default function HomePage() {
     if (!rows.length) return null;
     return rows[0];
   }, [snapshot]);
+
+  const mobileCardCount = 4;
+
+  const onMobileDeckScroll = () => {
+    const el = mobileDeckRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    if (w <= 0) return;
+    const idx = Math.max(0, Math.min(mobileCardCount - 1, Math.round(el.scrollLeft / w)));
+    if (idx !== mobileDeckIndex) setMobileDeckIndex(idx);
+  };
+
+  const goToMobileCard = (idx: number) => {
+    const el = mobileDeckRef.current;
+    if (!el) return;
+    const safe = Math.max(0, Math.min(mobileCardCount - 1, idx));
+    el.scrollTo({ left: safe * el.clientWidth, behavior: "smooth" });
+    setMobileDeckIndex(safe);
+  };
 
   const tvSymbol = useMemo(() => {
     const fromSignal = (snapshot?.signals || [])[0]?.symbol;
@@ -1017,8 +1038,8 @@ export default function HomePage() {
             <div className="kpi"><span>Net</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
           </div>
 
-          <div className="mobile-trader-cards">
-            <div className="mobile-trader-card">
+          <div className="mobile-trader-cards" ref={mobileDeckRef} onScroll={onMobileDeckScroll}>
+            <div className="mobile-trader-card mobile-slide">
               <p className="mobile-label">Live Signal</p>
               {activeSignals[0] ? (
                 <>
@@ -1031,7 +1052,7 @@ export default function HomePage() {
               )}
             </div>
 
-            <div className="mobile-trader-card">
+            <div className="mobile-trader-card mobile-slide">
               <p className="mobile-label">Open Position</p>
               {openPositions[0] ? (
                 <>
@@ -1044,7 +1065,7 @@ export default function HomePage() {
               )}
             </div>
 
-            <div className="mobile-trader-card">
+            <div className="mobile-trader-card mobile-slide">
               <p className="mobile-label">Last Closed Trade</p>
               {latestClosedTrade ? (
                 <>
@@ -1057,12 +1078,23 @@ export default function HomePage() {
               )}
             </div>
 
-            <div className="mobile-trader-card">
+            <div className="mobile-trader-card mobile-slide">
               <p className="mobile-label">Risk Snapshot</p>
               <h4>{snapshot?.symbols?.[0] || "-"}</h4>
               <p>Trades Today: {snapshot?.guard_state?.today_opened_trades ?? 0}</p>
               <p>{latestEvent ? `${latestEvent.event_type}: ${latestEvent.symbol}` : "No recent event"}</p>
             </div>
+          </div>
+          <div className="mobile-deck-dots" role="tablist" aria-label="Mobile trader cards">
+            {[0, 1, 2, 3].map((i) => (
+              <button
+                key={`dot-${i}`}
+                type="button"
+                className={`mobile-dot ${mobileDeckIndex === i ? "active" : ""}`}
+                onClick={() => goToMobileCard(i)}
+                aria-label={`Show card ${i + 1}`}
+              />
+            ))}
           </div>
 
           <div className="card performance-card">

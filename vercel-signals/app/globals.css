@@ -242,6 +242,10 @@ h3 {
   display: none;
 }
 
+.mobile-deck-dots {
+  display: none;
+}
+
 .mobile-trader-card {
   border: 1px solid #d3e1f2;
   border-radius: 14px;
@@ -266,6 +270,21 @@ h3 {
   letter-spacing: 0.08em;
   color: #7c8ea5 !important;
   margin-bottom: 5px !important;
+}
+
+.mobile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 0;
+  background: #bfd0ea;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.mobile-dot.active {
+  background: #1f5fd6;
+  transform: scale(1.25);
 }
 
 .kpi {
@@ -930,10 +949,31 @@ main > *:nth-child(4) { animation-delay: 0.09s; }
   }
 
   .mobile-trader-cards {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+    scrollbar-width: none;
+  }
+
+  .mobile-trader-cards::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-slide {
+    flex: 0 0 100%;
+    min-width: 100%;
+    scroll-snap-align: start;
+  }
+
+  .mobile-deck-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 12px;
   }
 
   .chart-filters {

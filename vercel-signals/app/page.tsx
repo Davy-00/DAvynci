@@ -322,8 +322,14 @@ export default function HomePage() {
 
   const openPositions = useMemo(() => snapshot?.bot_positions || [], [snapshot]);
   const latestClosedTrade = useMemo(() => {
-    const rows = snapshot?.closed_trades || [];
+    const rows = [...(snapshot?.closed_trades || [])];
     if (!rows.length) return null;
+    rows.sort((a, b) => {
+      const aTs = Date.parse(String(a.close_time_utc || a.entry_time_utc || ""));
+      const bTs = Date.parse(String(b.close_time_utc || b.entry_time_utc || ""));
+      if (Number.isFinite(aTs) && Number.isFinite(bTs) && aTs !== bTs) return bTs - aTs;
+      return Number(b.position_id || 0) - Number(a.position_id || 0);
+    });
     return rows[0];
   }, [snapshot]);
 
@@ -465,7 +471,16 @@ export default function HomePage() {
     setSaveMsg(res.ok ? "Email saved." : "Failed to save email.");
   };
 
-  const closedTrades = snapshot?.closed_trades || [];
+  const closedTrades = useMemo(() => {
+    const rows = [...(snapshot?.closed_trades || [])];
+    rows.sort((a, b) => {
+      const aTs = Date.parse(String(a.close_time_utc || a.entry_time_utc || ""));
+      const bTs = Date.parse(String(b.close_time_utc || b.entry_time_utc || ""));
+      if (Number.isFinite(aTs) && Number.isFinite(bTs) && aTs !== bTs) return bTs - aTs;
+      return Number(b.position_id || 0) - Number(a.position_id || 0);
+    });
+    return rows;
+  }, [snapshot]);
   const HISTORY_PAGE_SIZE = 20;
   const historyTotalPages = Math.max(1, Math.ceil(closedTrades.length / HISTORY_PAGE_SIZE));
   const historyPageSafe = Math.min(historyPage, historyTotalPages);
@@ -651,8 +666,14 @@ export default function HomePage() {
         }>,
         equityPath: "",
         balancePath: "",
+        yTicks: [] as Array<{ y: number; label: string }>,
+        xTicks: [] as Array<{ x: number; label: string }>,
         width: 920,
         height: 280,
+        plotLeft: 68,
+        plotRight: 902,
+        plotTop: 18,
+        plotBottom: 246,
         samples: 0,
         ageHours: 0,
         growthPerHour: 0,
@@ -671,15 +692,39 @@ export default function HomePage() {
 
     const w = 920;
     const h = 280;
-    const px = 20;
-    const py = 16;
+    const plotLeft = 68;
+    const plotRight = w - 18;
+    const plotTop = 18;
+    const plotBottom = h - 34;
     const values = [...enriched.map((p) => p.equity), ...enriched.map((p) => p.balance), startingBalance];
     const min = Math.min(...values);
     const max = Math.max(...values);
     const span = max - min || 1;
-    const xFor = (i: number) => (enriched.length === 1 ? w / 2 : px + (i / (enriched.length - 1)) * (w - px * 2));
-    const yFor = (v: number) => h - py - ((v - min) / span) * (h - py * 2);
+    const xFor = (i: number) => (enriched.length === 1 ? (plotLeft + plotRight) / 2 : plotLeft + (i / (enriched.length - 1)) * (plotRight - plotLeft));
+    const yFor = (v: number) => plotBottom - ((v - min) / span) * (plotBottom - plotTop);
     const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
+
+    const yTicks = [0, 1, 2, 3, 4].map((i) => {
+      const ratio = i / 4;
+      const value = max - ratio * span;
+      return { y: yFor(value), label: fmtMoney(value) };
+    });
+
+    const formatUtcTick = (tsMs: number) => {
+      const d = new Date(tsMs);
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mi = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${mm}-${dd} ${hh}:${mi}`;
+    };
+
+    const xTickCount = Math.min(5, enriched.length);
+    const xIdxRaw = Array.from({ length: xTickCount }, (_, i) =>
+      Math.round((i * (enriched.length - 1)) / Math.max(1, xTickCount - 1))
+    );
+    const xIdx = Array.from(new Set(xIdxRaw));
+    const xTicks = xIdx.map((idx) => ({ x: xFor(idx), label: formatUtcTick(enriched[idx].tsMs) }));
 
     const ageHours = Math.max(0, (enriched[enriched.length - 1].tsMs - enriched[0].tsMs) / 3600000);
     const growthPerHour = ageHours > 0 ? (enriched[enriched.length - 1].equity - enriched[0].equity) / ageHours : 0;
@@ -688,8 +733,14 @@ export default function HomePage() {
       points: enriched,
       equityPath: pathFor(enriched.map((p) => p.equity)),
       balancePath: pathFor(enriched.map((p) => p.balance)),
+      yTicks,
+      xTicks,
       width: w,
       height: h,
+      plotLeft,
+      plotRight,
+      plotTop,
+      plotBottom,
       samples: enriched.length,
       ageHours,
       growthPerHour,
@@ -936,6 +987,65 @@ export default function HomePage() {
 
             {growthLedger.points.length ? (
               <>
+                <div className="growth-chart-shell">
+                  <svg
+                    viewBox={`0 0 ${growthLedger.width} ${growthLedger.height}`}
+                    width="100%"
+                    height="280"
+                    role="img"
+                    aria-label="Account growth monitoring graph"
+                  >
+                    <defs>
+                      <linearGradient id="growth-bg" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#ffffff" />
+                        <stop offset="100%" stopColor="#f3fbf8" />
+                      </linearGradient>
+                    </defs>
+                    <rect x="0" y="0" width={growthLedger.width} height={growthLedger.height} fill="url(#growth-bg)" rx="12" />
+                    {growthLedger.yTicks.map((t, i) => (
+                      <line
+                        key={`gy-${i}`}
+                        x1={growthLedger.plotLeft}
+                        y1={t.y}
+                        x2={growthLedger.plotRight}
+                        y2={t.y}
+                        stroke="#deebe6"
+                        strokeDasharray="4 6"
+                      />
+                    ))}
+                    {growthLedger.xTicks.map((t, i) => (
+                      <line
+                        key={`gx-${i}`}
+                        x1={t.x}
+                        y1={growthLedger.plotTop}
+                        x2={t.x}
+                        y2={growthLedger.plotBottom}
+                        stroke="#edf4f0"
+                      />
+                    ))}
+                    <line x1={growthLedger.plotLeft} y1={growthLedger.plotBottom} x2={growthLedger.plotRight} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.4" />
+                    <line x1={growthLedger.plotLeft} y1={growthLedger.plotTop} x2={growthLedger.plotLeft} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.4" />
+                    <path d={growthLedger.balancePath} fill="none" stroke="#2f4a7f" strokeWidth="2" />
+                    <path d={growthLedger.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
+                    {growthLedger.yTicks.map((t, i) => (
+                      <text key={`yt-${i}`} x={growthLedger.plotLeft - 8} y={t.y + 4} textAnchor="end" fontSize="11" fill="#5e7891">
+                        {t.label}
+                      </text>
+                    ))}
+                    {growthLedger.xTicks.map((t, i) => (
+                      <text key={`xt-${i}`} x={t.x} y={growthLedger.plotBottom + 18} textAnchor="middle" fontSize="11" fill="#5e7891">
+                        {t.label}
+                      </text>
+                    ))}
+                    <text x={growthLedger.plotLeft - 44} y={growthLedger.plotTop - 2} fontSize="11" fill="#5e7891">Y (USD)</text>
+                    <text x={(growthLedger.plotLeft + growthLedger.plotRight) / 2} y={growthLedger.height - 6} textAnchor="middle" fontSize="11" fill="#5e7891">X (UTC Time)</text>
+                  </svg>
+                  <div className="row" style={{ justifyContent: "flex-end", gap: 14, marginTop: 8 }}>
+                    <span className="muted">Equity</span>
+                    <span className="muted">Balance</span>
+                  </div>
+                </div>
+
                 <div className="table-wrap">
                   <table>
                     <thead>

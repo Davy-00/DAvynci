@@ -271,7 +271,7 @@ export default function HomePage() {
       if (evt.key === "Escape") closeMenu();
     };
 
-    const onPointerDown = (evt: MouseEvent) => {
+    const onPointerDown = (evt: MouseEvent | TouchEvent) => {
       const target = evt.target as HTMLElement | null;
       if (!target) return;
       if (target.closest("#main-nav")) return;
@@ -281,11 +281,18 @@ export default function HomePage() {
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown, { passive: true });
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    // Keep drawer state in sync with tab changes from any trigger.
+    closeMenu();
+  }, [tab]);
 
   useEffect(() => {
     let mounted = true;
@@ -728,7 +735,13 @@ export default function HomePage() {
           <div className="live-pill">{liveMode === "stream" ? "LIVE STREAM" : "LIVE POLLING"}</div>
           <button
             className="menu-btn"
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={() => {
+              if (menuOpen) {
+                closeMenu();
+                return;
+              }
+              setMenuOpen(true);
+            }}
             aria-expanded={menuOpen}
             aria-controls="main-nav"
             aria-label={menuOpen ? "Close navigation" : "Open navigation"}

@@ -367,6 +367,17 @@ export default function HomePage() {
   );
 
   const openPositions = useMemo(() => snapshot?.bot_positions || [], [snapshot]);
+  const latestClosedTrade = useMemo(() => {
+    const rows = snapshot?.closed_trades || [];
+    if (!rows.length) return null;
+    return rows[0];
+  }, [snapshot]);
+
+  const latestEvent = useMemo(() => {
+    const rows = snapshot?.recent_events || [];
+    if (!rows.length) return null;
+    return rows[0];
+  }, [snapshot]);
 
   const tvSymbol = useMemo(() => {
     const fromSignal = (snapshot?.signals || [])[0]?.symbol;
@@ -1003,6 +1014,54 @@ export default function HomePage() {
             <div className="kpi"><span>Trades Today</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
             <div className="kpi"><span>Open</span><strong className={uiOpen >= 0 ? "up" : "down"}>{fmtMoney(uiOpen)}</strong></div>
             <div className="kpi"><span>Net</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
+          </div>
+
+          <div className="mobile-trader-cards">
+            <div className="mobile-trader-card">
+              <p className="mobile-label">Live Signal</p>
+              {activeSignals[0] ? (
+                <>
+                  <h4>{activeSignals[0].symbol}</h4>
+                  <p>{signalType(activeSignals[0])}</p>
+                  <p>SL {Number(activeSignals[0].sl || 0).toFixed(2)} | TP {Number(activeSignals[0].tp || 0).toFixed(2)}</p>
+                </>
+              ) : (
+                <p>No active signal</p>
+              )}
+            </div>
+
+            <div className="mobile-trader-card">
+              <p className="mobile-label">Open Position</p>
+              {openPositions[0] ? (
+                <>
+                  <h4>{openPositions[0].symbol}</h4>
+                  <p>{String(openPositions[0].type).toUpperCase()} | Lot {Number(openPositions[0].volume || 0).toFixed(2)}</p>
+                  <p className={Number(openPositions[0].profit || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(openPositions[0].profit || 0))}</p>
+                </>
+              ) : (
+                <p>No open position</p>
+              )}
+            </div>
+
+            <div className="mobile-trader-card">
+              <p className="mobile-label">Last Closed Trade</p>
+              {latestClosedTrade ? (
+                <>
+                  <h4>{latestClosedTrade.symbol}</h4>
+                  <p>{String(latestClosedTrade.side || "").toUpperCase()} | {latestClosedTrade.close_reason}</p>
+                  <p className={Number(latestClosedTrade.pnl || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(latestClosedTrade.pnl || 0))}</p>
+                </>
+              ) : (
+                <p>No closed trades yet</p>
+              )}
+            </div>
+
+            <div className="mobile-trader-card">
+              <p className="mobile-label">Risk Snapshot</p>
+              <h4>{snapshot?.symbols?.[0] || "-"}</h4>
+              <p>Trades Today: {snapshot?.guard_state?.today_opened_trades ?? 0}</p>
+              <p>{latestEvent ? `${latestEvent.event_type}: ${latestEvent.symbol}` : "No recent event"}</p>
+            </div>
           </div>
 
           <div className="card performance-card">

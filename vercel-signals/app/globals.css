@@ -238,6 +238,36 @@ h3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.mobile-trader-cards {
+  display: none;
+}
+
+.mobile-trader-card {
+  border: 1px solid #d3e1f2;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #ffffff, #f3f8ff);
+  padding: 12px;
+}
+
+.mobile-trader-card h4 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.mobile-trader-card p {
+  margin: 0;
+  font-size: 12px;
+  color: #5a718a;
+}
+
+.mobile-label {
+  font-size: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7c8ea5 !important;
+  margin-bottom: 5px !important;
+}
+
 .kpi {
   background: linear-gradient(165deg, #ffffff, #f2f8ff);
   border: 1px solid #d4e1f2;
@@ -897,6 +927,13 @@ main > *:nth-child(4) { animation-delay: 0.09s; }
 
   .kpi-grid-analytics {
     grid-template-columns: 1fr;
+  }
+
+  .mobile-trader-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 
   .chart-filters {

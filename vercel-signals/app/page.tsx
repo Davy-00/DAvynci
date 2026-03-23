@@ -312,12 +312,7 @@ export default function HomePage() {
       .sort((a, b) => a.timestamp_utc.localeCompare(b.timestamp_utc));
   }, [snapshot]);
 
-  const startingBalance = useMemo(() => {
-    const fromSnapshot = Number(snapshot?.account?.starting_balance ?? NaN);
-    if (Number.isFinite(fromSnapshot) && fromSnapshot > 0) return fromSnapshot;
-    if (performancePoints.length) return Number(performancePoints[0].balance);
-    return STARTING_BALANCE;
-  }, [snapshot, performancePoints]);
+  const startingBalance = STARTING_BALANCE;
 
   const activeSignals = useMemo(
     () =>
@@ -676,7 +671,20 @@ export default function HomePage() {
       equity: Number(snapshot?.account?.equity ?? startingBalance),
       balance: Number(snapshot?.account?.balance ?? startingBalance),
     };
-    const safePoints = points.length ? points : [fallbackPoint];
+    let safePoints = points.length ? points : [fallbackPoint];
+    if (safePoints.length === 1) {
+      const only = safePoints[0];
+      const prevTs = new Date(only.tsMs - 60 * 1000).toISOString();
+      safePoints = [
+        {
+          ts: prevTs,
+          tsMs: only.tsMs - 60 * 1000,
+          equity: startingBalance,
+          balance: startingBalance,
+        },
+        only,
+      ];
+    }
 
     if (!safePoints.length) {
       return {

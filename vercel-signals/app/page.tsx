@@ -201,6 +201,7 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
   const [mobileDeckIndex, setMobileDeckIndex] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
   const mobileDeckRef = useRef<HTMLDivElement | null>(null);
   const fingerprintRef = useRef("");
 
@@ -465,6 +466,16 @@ export default function HomePage() {
   };
 
   const closedTrades = snapshot?.closed_trades || [];
+  const HISTORY_PAGE_SIZE = 20;
+  const historyTotalPages = Math.max(1, Math.ceil(closedTrades.length / HISTORY_PAGE_SIZE));
+  const historyPageSafe = Math.min(historyPage, historyTotalPages);
+  const historyStart = (historyPageSafe - 1) * HISTORY_PAGE_SIZE;
+  const historyEnd = Math.min(closedTrades.length, historyStart + HISTORY_PAGE_SIZE);
+  const pagedClosedTrades = closedTrades.slice(historyStart, historyEnd);
+
+  useEffect(() => {
+    setHistoryPage((prev) => Math.min(prev, historyTotalPages));
+  }, [historyTotalPages]);
 
   useEffect(() => {
     if (!closedTrades.length) return;
@@ -856,38 +867,48 @@ export default function HomePage() {
             {!closedTrades.length ? (
               <p>No closed positions yet.</p>
             ) : (
-              <div className="table-wrap"><table>
-                <thead>
-                  <tr>
-                    <th>Position ID</th>
-                    <th>Symbol</th>
-                    <th>Side</th>
-                    <th>Lot</th>
-                    <th>Entry</th>
-                    <th>Close</th>
-                    <th>PnL</th>
-                    <th>Close Type</th>
-                    <th>Opened (UTC)</th>
-                    <th>Closed (UTC)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {closedTrades.map((t, i) => (
-                    <tr key={`${t.position_id}-${i}`}>
-                      <td>{t.position_id}</td>
-                      <td>{t.symbol}</td>
-                      <td>{String(t.side || "").toUpperCase()}</td>
-                      <td>{Number(t.volume || 0).toFixed(2)}</td>
-                      <td>{Number(t.entry_price || 0).toFixed(5)}</td>
-                      <td>{Number(t.close_price || 0).toFixed(5)}</td>
-                      <td className={Number(t.pnl || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(t.pnl || 0))}</td>
-                      <td>{t.close_reason || "-"}</td>
-                      <td>{t.entry_time_utc || "-"}</td>
-                      <td>{t.close_time_utc || "-"}</td>
+              <>
+                <div className="table-wrap"><table>
+                  <thead>
+                    <tr>
+                      <th>Position ID</th>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>Lot</th>
+                      <th>Entry</th>
+                      <th>Close</th>
+                      <th>PnL</th>
+                      <th>Close Type</th>
+                      <th>Opened (UTC)</th>
+                      <th>Closed (UTC)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table></div>
+                  </thead>
+                  <tbody>
+                    {pagedClosedTrades.map((t, i) => (
+                      <tr key={`${t.position_id}-${i}`}>
+                        <td>{t.position_id}</td>
+                        <td>{t.symbol}</td>
+                        <td>{String(t.side || "").toUpperCase()}</td>
+                        <td>{Number(t.volume || 0).toFixed(2)}</td>
+                        <td>{Number(t.entry_price || 0).toFixed(5)}</td>
+                        <td>{Number(t.close_price || 0).toFixed(5)}</td>
+                        <td className={Number(t.pnl || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(t.pnl || 0))}</td>
+                        <td>{t.close_reason || "-"}</td>
+                        <td>{t.entry_time_utc || "-"}</td>
+                        <td>{t.close_time_utc || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></div>
+                <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
+                  <p className="muted">Showing {historyStart + 1}-{historyEnd} of {closedTrades.length}</p>
+                  <div className="row">
+                    <button className="btn btn-ghost" disabled={historyPageSafe <= 1} onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}>Previous</button>
+                    <p className="muted">Page {historyPageSafe} / {historyTotalPages}</p>
+                    <button className="btn btn-ghost" disabled={historyPageSafe >= historyTotalPages} onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}>Next</button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </>
@@ -1124,7 +1145,7 @@ export default function HomePage() {
                 </tr>
               </thead>
               <tbody>
-                {(snapshot?.closed_trades || []).map((t, i) => (
+                {pagedClosedTrades.map((t, i) => (
                   <tr key={`${t.position_id}-${i}`}>
                     <td><span className={`trade-icon ${String(t.close_reason || "").toLowerCase()}`}>{t.reason_icon || "?"}</span></td>
                     <td><span className={`exit-badge ${String(t.close_reason || "").toLowerCase()}`}>{t.close_reason}</span></td>
@@ -1140,6 +1161,14 @@ export default function HomePage() {
                 ))}
               </tbody>
             </table></div>
+            <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
+              <p className="muted">Showing {historyStart + 1}-{historyEnd} of {closedTrades.length}</p>
+              <div className="row">
+                <button className="btn btn-ghost" disabled={historyPageSafe <= 1} onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}>Previous</button>
+                <p className="muted">Page {historyPageSafe} / {historyTotalPages}</p>
+                <button className="btn btn-ghost" disabled={historyPageSafe >= historyTotalPages} onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}>Next</button>
+              </div>
+            </div>
           )}
           <p className="muted" style={{ marginTop: 10 }}>T TP | S SL | R Trail | B BE | M Manual</p>
         </div>

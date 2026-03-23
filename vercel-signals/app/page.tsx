@@ -6,10 +6,6 @@ const STARTING_BALANCE = 30;
 
 type PnlView = "day" | "week" | "month";
 type MainTab = "overview" | "analytics" | "pnl" | "signals" | "positions" | "trades" | "diary" | "events" | "logs" | "diagnostics";
-type ChartRange = "15m" | "1h" | "4h" | "12h" | "1d" | "3d" | "1w" | "all";
-type ChartResolution = "raw" | "1m" | "5m";
-type ChartSmoothing = "none" | "ema3" | "ema8";
-type ChartScale = "auto" | "fromStart";
 
 type Signal = {
   symbol: string;
@@ -102,15 +98,6 @@ declare global {
   }
 }
 
-function toTradingViewSymbol(raw: string): string {
-  const s = String(raw || "").toUpperCase();
-  if (s.includes("BTC")) return "BITSTAMP:BTCUSD";
-  if (s.includes("XAU") || s.includes("GOLD")) return "OANDA:XAUUSD";
-  if (s.includes("EURUSD")) return "OANDA:EURUSD";
-  if (s.includes("USDJPY")) return "OANDA:USDJPY";
-  return "BITSTAMP:BTCUSD";
-}
-
 type DiaryEntry = {
   trade_id: string;
   created_at_utc: string;
@@ -121,33 +108,6 @@ type DiaryEntry = {
   lesson: string;
   rating: number;
 };
-
-function ema(values: number[], span: number): number[] {
-  if (values.length === 0) return [];
-  const alpha = 2 / (span + 1);
-  const out: number[] = [values[0]];
-  for (let i = 1; i < values.length; i += 1) {
-    out.push(alpha * values[i] + (1 - alpha) * out[i - 1]);
-  }
-  return out;
-}
-
-function rangeMs(range: ChartRange): number | null {
-  if (range === "15m") return 15 * 60 * 1000;
-  if (range === "1h") return 60 * 60 * 1000;
-  if (range === "4h") return 4 * 60 * 60 * 1000;
-  if (range === "12h") return 12 * 60 * 60 * 1000;
-  if (range === "1d") return 24 * 60 * 60 * 1000;
-  if (range === "3d") return 3 * 24 * 60 * 60 * 1000;
-  if (range === "1w") return 7 * 24 * 60 * 60 * 1000;
-  return null;
-}
-
-function resolutionMs(res: ChartResolution): number {
-  if (res === "1m") return 60 * 1000;
-  if (res === "5m") return 5 * 60 * 1000;
-  return 0;
-}
 
 function signalType(s: Signal): string {
   const side = String(s.side || "").toLowerCase();
@@ -235,14 +195,6 @@ export default function HomePage() {
   const [pnlView, setPnlView] = useState<PnlView>("day");
   const [tab, setTab] = useState<MainTab>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [chartRange, setChartRange] = useState<ChartRange>("all");
-  const [chartResolution, setChartResolution] = useState<ChartResolution>("raw");
-  const [chartSmoothing, setChartSmoothing] = useState<ChartSmoothing>("none");
-  const [chartScale, setChartScale] = useState<ChartScale>("auto");
-  const [showEquitySeries, setShowEquitySeries] = useState(true);
-  const [showBalanceSeries, setShowBalanceSeries] = useState(true);
-  const [showNetSeries, setShowNetSeries] = useState(false);
-  const [showCloseMarkers, setShowCloseMarkers] = useState(true);
   const [diary, setDiary] = useState<Record<string, DiaryEntry>>({});
   const [selectedTradeId, setSelectedTradeId] = useState("");
   const [draft, setDraft] = useState({ setup: "", emotion: "", mistakes: "", lesson: "", rating: 0 });
@@ -250,7 +202,6 @@ export default function HomePage() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
   const [mobileDeckIndex, setMobileDeckIndex] = useState(0);
-  const tvContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileDeckRef = useRef<HTMLDivElement | null>(null);
   const fingerprintRef = useRef("");
 
@@ -426,51 +377,6 @@ export default function HomePage() {
     setMobileDeckIndex(safe);
   };
 
-  const tvSymbol = useMemo(() => {
-    const fromSignal = (snapshot?.signals || [])[0]?.symbol;
-    const fromList = (snapshot as { symbols?: string[] } | null)?.symbols?.[0];
-    return toTradingViewSymbol(String(fromList || fromSignal || "BTCUSD"));
-  }, [snapshot]);
-
-  useEffect(() => {
-    const mountWidget = () => {
-      if (!tvContainerRef.current || !window.TradingView) return;
-      tvContainerRef.current.innerHTML = "";
-      // TradingView widget: visual market context for pending/open bot orders.
-      new window.TradingView.widget({
-        autosize: true,
-        symbol: tvSymbol,
-        interval: "60",
-        timezone: "Etc/UTC",
-        theme: "light",
-        style: "1",
-        locale: "en",
-        hide_top_toolbar: false,
-        hide_legend: false,
-        allow_symbol_change: true,
-        container_id: "tv-live-widget",
-      });
-    };
-
-    if (window.TradingView) {
-      mountWidget();
-      return;
-    }
-
-    const existing = document.getElementById("tradingview-widget-script") as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener("load", mountWidget, { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "tradingview-widget-script";
-    script.src = "https://s3.tradingview.com/tv.js";
-    script.async = true;
-    script.onload = mountWidget;
-    document.body.appendChild(script);
-  }, [tvSymbol]);
-
   const floatingPnl = useMemo(
     () => (snapshot?.bot_positions || []).reduce((acc, p) => acc + Number(p.profit || 0), 0),
     [snapshot]
@@ -561,177 +467,6 @@ export default function HomePage() {
       monthName: latest.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
     };
   }, [performancePoints, snapshot, startingBalance]);
-
-  const performance = useMemo(() => {
-    if (!performancePoints.length) {
-      return {
-        points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
-        equityPath: "",
-        equityAreaPath: "",
-        balancePath: "",
-        netPath: "",
-        minY: 0,
-        maxY: 1,
-        gridLines: [] as number[],
-        currentEq: startingBalance,
-        currentBal: startingBalance,
-        currentNet: 0,
-        highEq: startingBalance,
-        lowEq: startingBalance,
-        changePct: 0,
-        perMinute: 0,
-        tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
-      };
-    }
-
-    const latestTs = snapshot?.timestamp_utc ? new Date(snapshot.timestamp_utc).getTime() : new Date(performancePoints[performancePoints.length - 1].timestamp_utc).getTime();
-    const cutMs = rangeMs(chartRange);
-    const raw = cutMs === null
-      ? performancePoints
-      : performancePoints.filter((p) => new Date(p.timestamp_utc).getTime() >= latestTs - cutMs);
-
-    const bucketMs = resolutionMs(chartResolution);
-    let points = raw;
-    if (bucketMs > 0 && raw.length > 1) {
-      const buckets = new Map<number, PerfPoint>();
-      for (const p of raw) {
-        const t = new Date(p.timestamp_utc).getTime();
-        const b = Math.floor(t / bucketMs) * bucketMs;
-        buckets.set(b, p);
-      }
-      points = Array.from(buckets.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map((x) => x[1]);
-    }
-
-    const withNet = points.map((p) => ({ ...p, net: p.equity - startingBalance, tsMs: new Date(p.timestamp_utc).getTime() }));
-    if (!withNet.length) {
-      return {
-        points: [] as Array<PerfPoint & { net: number; tsMs: number }>,
-        equityPath: "",
-        equityAreaPath: "",
-        balancePath: "",
-        netPath: "",
-        minY: 0,
-        maxY: 1,
-        gridLines: [] as number[],
-        currentEq: startingBalance,
-        currentBal: startingBalance,
-        currentNet: 0,
-        highEq: startingBalance,
-        lowEq: startingBalance,
-        changePct: 0,
-        perMinute: 0,
-        tradeMarkers: [] as Array<{ x: number; y: number; pnl: number; closeReason: string; symbol: string }>,
-      };
-    }
-
-    let eq = withNet.map((p) => p.equity);
-    let bal = withNet.map((p) => p.balance);
-    let net = withNet.map((p) => p.net);
-    if (chartSmoothing === "ema3") {
-      eq = ema(eq, 3);
-      bal = ema(bal, 3);
-      net = ema(net, 3);
-    } else if (chartSmoothing === "ema8") {
-      eq = ema(eq, 8);
-      bal = ema(bal, 8);
-      net = ema(net, 8);
-    }
-
-    const smoothed = withNet.map((p, i) => ({ ...p, equity: eq[i], balance: bal[i], net: net[i] }));
-
-    const w = 920;
-    const h = 280;
-    const px = 18;
-    const py = 16;
-    const selectedValues: number[] = [];
-    if (showEquitySeries) selectedValues.push(...smoothed.map((p) => p.equity));
-    if (showBalanceSeries) selectedValues.push(...smoothed.map((p) => p.balance));
-    if (showNetSeries) selectedValues.push(...smoothed.map((p) => p.net));
-    if (!selectedValues.length) selectedValues.push(...smoothed.map((p) => p.equity));
-    if (chartScale === "fromStart") selectedValues.push(startingBalance);
-
-    const min = Math.min(...selectedValues);
-    const max = Math.max(...selectedValues);
-    const span = max - min || 1;
-
-    const xFor = (i: number) => (smoothed.length === 1 ? w / 2 : px + (i / (smoothed.length - 1)) * (w - px * 2));
-    const yFor = (v: number) => h - py - ((v - min) / span) * (h - py * 2);
-    const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
-    const areaFor = (arr: number[]) => {
-      const line = pathFor(arr);
-      const endX = xFor(arr.length - 1).toFixed(2);
-      const startX = xFor(0).toFixed(2);
-      const baseY = yFor(min).toFixed(2);
-      return `${line} L${endX} ${baseY} L${startX} ${baseY} Z`;
-    };
-
-    const minTs = smoothed[0].tsMs;
-    const maxTs = smoothed[smoothed.length - 1].tsMs;
-    const xForTs = (ts: number) => {
-      if (maxTs <= minTs) return w / 2;
-      return px + ((ts - minTs) / (maxTs - minTs)) * (w - px * 2);
-    };
-
-    const markers = showCloseMarkers
-      ? (snapshot?.closed_trades || [])
-          .map((t) => ({ ...t, tsMs: new Date(String(t.close_time_utc || "")).getTime() }))
-          .filter((t) => Number.isFinite(t.tsMs) && t.tsMs >= minTs && t.tsMs <= maxTs)
-          .slice(0, 80)
-          .map((t) => ({
-            x: xForTs(t.tsMs),
-            y: yFor(
-              showNetSeries
-                ? Number(t.pnl || 0)
-                : smoothed.reduce((best, p) => {
-                    return Math.abs(p.tsMs - t.tsMs) < Math.abs(best.tsMs - t.tsMs) ? p : best;
-                  }, smoothed[0]).equity
-            ),
-            pnl: Number(t.pnl || 0),
-            closeReason: String(t.close_reason || ""),
-            symbol: String(t.symbol || ""),
-          }))
-      : [];
-
-    const current = smoothed[smoothed.length - 1];
-    const first = smoothed[0];
-    const prev = smoothed.length > 1 ? smoothed[smoothed.length - 2] : current;
-    const dtMin = Math.max(1 / 60, (current.tsMs - prev.tsMs) / 60000);
-    const perMinute = (current.equity - prev.equity) / dtMin;
-    const gridLines = [0, 1, 2, 3, 4].map((i) => py + (i / 4) * (h - py * 2));
-
-    return {
-      points: smoothed,
-      equityPath: pathFor(smoothed.map((p) => p.equity)),
-      equityAreaPath: areaFor(smoothed.map((p) => p.equity)),
-      balancePath: pathFor(smoothed.map((p) => p.balance)),
-      netPath: pathFor(smoothed.map((p) => p.net)),
-      minY: min,
-      maxY: max,
-      gridLines,
-      currentEq: current.equity,
-      currentBal: current.balance,
-      currentNet: current.net,
-      highEq: Math.max(...smoothed.map((p) => p.equity)),
-      lowEq: Math.min(...smoothed.map((p) => p.equity)),
-      changePct: first.equity > 0 ? ((current.equity - first.equity) / first.equity) * 100 : 0,
-      perMinute,
-      tradeMarkers: markers,
-    };
-  }, [
-    performancePoints,
-    snapshot,
-    chartRange,
-    chartResolution,
-    chartSmoothing,
-    chartScale,
-    showEquitySeries,
-    showBalanceSeries,
-    showNetSeries,
-    showCloseMarkers,
-    startingBalance,
-  ]);
 
   const lastUpdateAge = useMemo(() => {
     if (!snapshot?.timestamp_utc) return "no data";
@@ -1133,169 +868,53 @@ export default function HomePage() {
             ))}
           </div>
 
-          <div className="card performance-card">
-            <div className="performance-head">
-              <div>
-                <h3 className="performance-title">Performance Cockpit</h3>
-                <p className="performance-subtitle">Live equity, balance, and execution outcome over time.</p>
-              </div>
-              <div className="performance-meta">
-                <span>Last update</span>
-                <strong>{lastUpdateAge}</strong>
-              </div>
-            </div>
-
-            <div className="chart-filters performance-filters">
-              <label>
-                Range
-                <select value={chartRange} onChange={(e) => setChartRange(e.target.value as ChartRange)}>
-                  <option value="15m">15m</option>
-                  <option value="1h">1h</option>
-                  <option value="4h">4h</option>
-                  <option value="12h">12h</option>
-                  <option value="1d">1d</option>
-                  <option value="3d">3d</option>
-                  <option value="1w">1w</option>
-                  <option value="all">All</option>
-                </select>
-              </label>
-              <label>
-                Resolution
-                <select value={chartResolution} onChange={(e) => setChartResolution(e.target.value as ChartResolution)}>
-                  <option value="raw">Raw</option>
-                  <option value="1m">1m</option>
-                  <option value="5m">5m</option>
-                </select>
-              </label>
-              <label>
-                Smoothing
-                <select value={chartSmoothing} onChange={(e) => setChartSmoothing(e.target.value as ChartSmoothing)}>
-                  <option value="none">None</option>
-                  <option value="ema3">EMA 3</option>
-                  <option value="ema8">EMA 8</option>
-                </select>
-              </label>
-              <label>
-                Scale
-                <select value={chartScale} onChange={(e) => setChartScale(e.target.value as ChartScale)}>
-                  <option value="auto">Auto</option>
-                  <option value="fromStart">Include Start</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="series-toggles performance-toggles">
-              <label><input type="checkbox" checked={showEquitySeries} onChange={(e) => setShowEquitySeries(e.target.checked)} /> Equity</label>
-              <label><input type="checkbox" checked={showBalanceSeries} onChange={(e) => setShowBalanceSeries(e.target.checked)} /> Balance</label>
-              <label><input type="checkbox" checked={showNetSeries} onChange={(e) => setShowNetSeries(e.target.checked)} /> Net PnL</label>
-              <label><input type="checkbox" checked={showCloseMarkers} onChange={(e) => setShowCloseMarkers(e.target.checked)} /> Close Markers</label>
-            </div>
-
-            {performance.points.length ? (
-              <>
-                <div className="perf-strip">
-                  <div><span>Equity</span><strong>{fmtMoney(performance.currentEq)}</strong></div>
-                  <div><span>Balance</span><strong>{fmtMoney(performance.currentBal)}</strong></div>
-                  <div><span>Net</span><strong className={performance.currentNet >= 0 ? "up" : "down"}>{fmtMoney(performance.currentNet)}</strong></div>
-                  <div><span>High</span><strong>{fmtMoney(performance.highEq)}</strong></div>
-                  <div><span>Low</span><strong>{fmtMoney(performance.lowEq)}</strong></div>
-                  <div><span>Change</span><strong className={performance.changePct >= 0 ? "up" : "down"}>{performance.changePct.toFixed(2)}%</strong></div>
-                  <div><span>Speed</span><strong className={performance.perMinute >= 0 ? "up" : "down"}>{fmtMoney(performance.perMinute)}/m</strong></div>
-                </div>
-
-                <div className="perf-chart-shell">
-                  <svg viewBox="0 0 920 320" width="100%" height="320" role="img" aria-label="Filtered performance chart">
-                    <defs>
-                      <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#20b486" stopOpacity="0.36" />
-                        <stop offset="100%" stopColor="#20b486" stopOpacity="0.03" />
-                      </linearGradient>
-                      <radialGradient id="chart-bg" cx="50%" cy="10%" r="75%">
-                        <stop offset="0%" stopColor="#ffffff" />
-                        <stop offset="100%" stopColor="#f3f8ff" />
-                      </radialGradient>
-                    </defs>
-                    <rect x="0" y="0" width="920" height="320" fill="url(#chart-bg)" rx="12" />
-                    {performance.gridLines.map((y, i) => (
-                      <line key={`g-${i}`} x1="18" y1={y} x2="902" y2={y} stroke="#dfe8f4" strokeDasharray="4 6" />
-                    ))}
-                    {showEquitySeries ? <path d={performance.equityAreaPath} fill="url(#eq-fill)" /> : null}
-                    {showBalanceSeries ? <path d={performance.balancePath} fill="none" stroke="#2b4c7e" strokeWidth="2" opacity="0.9" /> : null}
-                    {showEquitySeries ? <path d={performance.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" /> : null}
-                    {showNetSeries ? <path d={performance.netPath} fill="none" stroke="#9b2c2c" strokeWidth="2" strokeDasharray="5 4" /> : null}
-                    {performance.tradeMarkers.map((m, i) => (
-                      <circle key={`mk-${i}`} cx={m.x} cy={m.y} r="5" fill={m.pnl >= 0 ? "#0e9f6e" : "#b9303d"} stroke="#ffffff" strokeWidth="2">
-                        <title>{`${m.symbol} ${m.closeReason} ${fmtMoney(m.pnl)}`}</title>
-                      </circle>
-                    ))}
-                  </svg>
-                </div>
-                <p className="performance-footnote">
-                  Range {fmtMoney(performance.minY)} to {fmtMoney(performance.maxY)} | Data points {performance.points.length}
-                </p>
-              </>
-            ) : (
-              <p>Waiting for performance snapshots.</p>
-            )}
-          </div>
-
           <div className="card">
-                      <div className="card tv-card">
-                        <div className="tv-head">
-                          <h3>TradingView Live Chart</h3>
-                          <span className="muted">{tvSymbol} · M5</span>
-                        </div>
-                        <div className="tv-chart-shell">
-                          <div id="tv-live-widget" ref={tvContainerRef} className="tv-chart" />
-                        </div>
+            <div className="tv-order-grid">
+              <div>
+                <h4>Pending Orders</h4>
+                {!pendingOrders.length ? (
+                  <p className="muted">No pending orders right now.</p>
+                ) : (
+                  <div className="table-wrap"><table>
+                    <thead><tr><th>Symbol</th><th>Side</th><th>Lot</th><th>SL</th><th>TP</th></tr></thead>
+                    <tbody>
+                      {pendingOrders.slice(0, 20).map((o, i) => (
+                        <tr key={`${o.symbol}-${o.side}-${i}`}>
+                          <td>{o.symbol}</td>
+                          <td>{signalType(o)}</td>
+                          <td>{Number(o.lot || 0).toFixed(2)}</td>
+                          <td>{Number(o.sl || 0).toFixed(2)}</td>
+                          <td>{Number(o.tp || 0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table></div>
+                )}
+              </div>
 
-                        <div className="tv-order-grid">
-                          <div>
-                            <h4>Pending Orders</h4>
-                            {!pendingOrders.length ? (
-                              <p className="muted">No pending orders right now.</p>
-                            ) : (
-                              <div className="table-wrap"><table>
-                                <thead><tr><th>Symbol</th><th>Side</th><th>Lot</th><th>SL</th><th>TP</th></tr></thead>
-                                <tbody>
-                                  {pendingOrders.slice(0, 20).map((o, i) => (
-                                    <tr key={`${o.symbol}-${o.side}-${i}`}>
-                                      <td>{o.symbol}</td>
-                                      <td>{signalType(o)}</td>
-                                      <td>{Number(o.lot || 0).toFixed(2)}</td>
-                                      <td>{Number(o.sl || 0).toFixed(2)}</td>
-                                      <td>{Number(o.tp || 0).toFixed(2)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table></div>
-                            )}
-                          </div>
-
-                          <div>
-                            <h4>Open Positions</h4>
-                            {!openPositions.length ? (
-                              <p className="muted">No open positions right now.</p>
-                            ) : (
-                              <div className="table-wrap"><table>
-                                <thead><tr><th>Symbol</th><th>Type</th><th>Entry</th><th>SL</th><th>TP</th><th>PnL</th></tr></thead>
-                                <tbody>
-                                  {openPositions.slice(0, 20).map((p) => (
-                                    <tr key={String(p.ticket)}>
-                                      <td>{p.symbol}</td>
-                                      <td>{String(p.type).toUpperCase()}</td>
-                                      <td>{Number(p.price_open || 0).toFixed(2)}</td>
-                                      <td>{Number(p.sl || 0).toFixed(2)}</td>
-                                      <td>{Number(p.tp || 0).toFixed(2)}</td>
-                                      <td className={Number(p.profit || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(p.profit || 0))}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table></div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+              <div>
+                <h4>Open Positions</h4>
+                {!openPositions.length ? (
+                  <p className="muted">No open positions right now.</p>
+                ) : (
+                  <div className="table-wrap"><table>
+                    <thead><tr><th>Symbol</th><th>Type</th><th>Entry</th><th>SL</th><th>TP</th><th>PnL</th></tr></thead>
+                    <tbody>
+                      {openPositions.slice(0, 20).map((p) => (
+                        <tr key={String(p.ticket)}>
+                          <td>{p.symbol}</td>
+                          <td>{String(p.type).toUpperCase()}</td>
+                          <td>{Number(p.price_open || 0).toFixed(2)}</td>
+                          <td>{Number(p.sl || 0).toFixed(2)}</td>
+                          <td>{Number(p.tp || 0).toFixed(2)}</td>
+                          <td className={Number(p.profit || 0) >= 0 ? "up" : "down"}>{fmtMoney(Number(p.profit || 0))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table></div>
+                )}
+              </div>
+            </div>
             <h3>Email Alerts</h3>
             <div className="row">
               <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
@@ -1351,14 +970,6 @@ export default function HomePage() {
 
             {growthLedger.points.length ? (
               <>
-                <div className="growth-chart-shell">
-                  <svg viewBox={`0 0 ${growthLedger.width} ${growthLedger.height}`} width="100%" height="280" role="img" aria-label="Account growth chart">
-                    <rect x="0" y="0" width={growthLedger.width} height={growthLedger.height} fill="#f8fcff" rx="12" />
-                    <path d={growthLedger.balancePath} fill="none" stroke="#2f4a7f" strokeWidth="2" />
-                    <path d={growthLedger.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
-                  </svg>
-                </div>
-
                 <div className="table-wrap">
                   <table>
                     <thead>

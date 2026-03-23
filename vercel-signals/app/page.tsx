@@ -211,7 +211,6 @@ export default function HomePage() {
   const [selectedTradeId, setSelectedTradeId] = useState("");
   const [draft, setDraft] = useState({ setup: "", emotion: "", mistakes: "", lesson: "", rating: 0 });
   const [diaryMsg, setDiaryMsg] = useState("");
-  const [nowMs, setNowMs] = useState(Date.now());
   const [liveMode, setLiveMode] = useState<"stream" | "polling">("stream");
   const [mobileDeckIndex, setMobileDeckIndex] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
@@ -229,8 +228,10 @@ export default function HomePage() {
     let mounted = true;
     let inFlight = false;
     let es: EventSource | null = null;
+    let streamHealthy = false;
 
     const loadSignals = async () => {
+      if (streamHealthy) return;
       if (inFlight) return;
       inFlight = true;
       try {
@@ -245,12 +246,14 @@ export default function HomePage() {
     try {
       es = new EventSource("/api/stream");
       es.onopen = () => {
+        streamHealthy = true;
         if (mounted) setLiveMode("stream");
       };
       es.addEventListener("snapshot", (evt) => {
         if (!mounted) return;
         const msg = evt as MessageEvent;
         try {
+          streamHealthy = true;
           applySnapshot(JSON.parse(msg.data));
           setLiveMode("stream");
         } catch {
@@ -258,19 +261,19 @@ export default function HomePage() {
         }
       });
       es.onerror = () => {
+        streamHealthy = false;
         if (mounted) setLiveMode("polling");
       };
     } catch {
+      streamHealthy = false;
       setLiveMode("polling");
     }
 
     loadSignals();
-    const poll = setInterval(loadSignals, 1000);
-    const clock = setInterval(() => setNowMs(Date.now()), 1000);
+    const poll = setInterval(loadSignals, 100);
     return () => {
       mounted = false;
       clearInterval(poll);
-      clearInterval(clock);
       if (es) es.close();
     };
   }, []);
@@ -328,9 +331,29 @@ export default function HomePage() {
     [snapshot]
   );
 
+  const activeSymbols = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of snapshot?.symbols || []) {
+      const k = String(s || "").trim().toUpperCase();
+      if (k) set.add(k);
+    }
+    for (const s of snapshot?.signals || []) {
+      const k = String(s.symbol || "").trim().toUpperCase();
+      if (k) set.add(k);
+    }
+    for (const p of snapshot?.bot_positions || []) {
+      const k = String(p.symbol || "").trim().toUpperCase();
+      if (k) set.add(k);
+    }
+    return set;
+  }, [snapshot]);
+
   const openPositions = useMemo(() => snapshot?.bot_positions || [], [snapshot]);
   const latestClosedTrade = useMemo(() => {
-    const rows = [...(snapshot?.closed_trades || [])];
+    const base = [...(snapshot?.closed_trades || [])];
+    const rows = activeSymbols.size
+      ? base.filter((t) => activeSymbols.has(String(t.symbol || "").trim().toUpperCase()))
+      : base;
     if (!rows.length) return null;
     rows.sort((a, b) => {
       const aTs = tradeSortTs(a);
@@ -339,7 +362,7 @@ export default function HomePage() {
       return Number(b.position_id || 0) - Number(a.position_id || 0);
     });
     return rows[0];
-  }, [snapshot]);
+  }, [snapshot, activeSymbols]);
 
   const latestEvent = useMemo(() => {
     const rows = snapshot?.recent_events || [];
@@ -457,17 +480,7 @@ export default function HomePage() {
     };
   }, [performancePoints, snapshot, startingBalance]);
 
-  const lastUpdateAge = useMemo(() => {
-    if (!snapshot?.timestamp_utc) return "no data";
-    const age = Math.max(0, Math.floor((nowMs - new Date(snapshot.timestamp_utc).getTime()) / 1000));
-    return `${age}s ago`;
-  }, [snapshot, nowMs]);
-
-  const isConnected = useMemo(() => {
-    if (!snapshot?.timestamp_utc) return false;
-    const ageSec = Math.max(0, Math.floor((nowMs - new Date(snapshot.timestamp_utc).getTime()) / 1000));
-    return ageSec <= 20;
-  }, [snapshot, nowMs]);
+  const isConnected = !!snapshot?.timestamp_utc;
 
   const saveEmail = async () => {
     setSaveMsg("");
@@ -480,7 +493,10 @@ export default function HomePage() {
   };
 
   const closedTrades = useMemo(() => {
-    const rows = [...(snapshot?.closed_trades || [])];
+    const base = [...(snapshot?.closed_trades || [])];
+    const rows = activeSymbols.size
+      ? base.filter((t) => activeSymbols.has(String(t.symbol || "").trim().toUpperCase()))
+      : base;
     rows.sort((a, b) => {
       const aTs = tradeSortTs(a);
       const bTs = tradeSortTs(b);
@@ -488,7 +504,7 @@ export default function HomePage() {
       return Number(b.position_id || 0) - Number(a.position_id || 0);
     });
     return rows;
-  }, [snapshot]);
+  }, [snapshot, activeSymbols]);
   const HISTORY_PAGE_SIZE = 20;
   const historyTotalPages = Math.max(1, Math.ceil(closedTrades.length / HISTORY_PAGE_SIZE));
   const historyPageSafe = Math.min(historyPage, historyTotalPages);
@@ -800,7 +816,6 @@ export default function HomePage() {
       </header>
 
       <section className="hero minimal">
-        <p>Updated {lastUpdateAge}</p>
         <p className={isConnected ? "up" : "down"}>{isConnected ? "Bot Connected" : "Bot Disconnected"}</p>
         <div className="hero-actions">
           <button
@@ -831,6 +846,24 @@ export default function HomePage() {
             <div className="kpi"><span>Trades Today</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
             <div className="kpi"><span>Open</span><strong className={uiOpen >= 0 ? "up" : "down"}>{fmtMoney(uiOpen)}</strong></div>
             <div className="kpi"><span>Net</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
+          </div>
+
+          <div className="card growth-card">
+            <h3>Account Growth Monitor</h3>
+            <p className="muted">Starting Equity {fmtMoney(startingBalance)}</p>
+            {growthLedger.points.length ? (
+              <div className="growth-chart-shell">
+                <svg viewBox={`0 0 ${growthLedger.width} ${growthLedger.height}`} width="100%" height="220" role="img" aria-label="Overview growth graph">
+                  <rect x="0" y="0" width={growthLedger.width} height={growthLedger.height} fill="#ffffff" rx="12" />
+                  <line x1={growthLedger.plotLeft} y1={growthLedger.plotBottom} x2={growthLedger.plotRight} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.2" />
+                  <line x1={growthLedger.plotLeft} y1={growthLedger.plotTop} x2={growthLedger.plotLeft} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.2" />
+                  <path d={growthLedger.balancePath} fill="none" stroke="#2f4a7f" strokeWidth="2" />
+                  <path d={growthLedger.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
+                </svg>
+              </div>
+            ) : (
+              <p className="muted">Waiting for account updates...</p>
+            )}
           </div>
 
           <div className="mobile-trader-cards" ref={mobileDeckRef} onScroll={onMobileDeckScroll}>

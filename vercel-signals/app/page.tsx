@@ -849,6 +849,75 @@ export default function HomePage() {
     };
   }, [snapshot, performancePoints, startingBalance]);
 
+  const growthLedger = useMemo(() => {
+    const points = performancePoints
+      .map((p) => ({
+        ts: String(p.timestamp_utc || ""),
+        tsMs: new Date(String(p.timestamp_utc || "")).getTime(),
+        equity: Number(p.equity || 0),
+        balance: Number(p.balance || 0),
+      }))
+      .filter((p) => Number.isFinite(p.tsMs) && Number.isFinite(p.equity) && Number.isFinite(p.balance));
+
+    if (!points.length) {
+      return {
+        points: [] as Array<{
+          ts: string;
+          tsMs: number;
+          equity: number;
+          balance: number;
+          net: number;
+          growthPct: number;
+          drawdown: number;
+          drawdownPct: number;
+        }>,
+        equityPath: "",
+        balancePath: "",
+        width: 920,
+        height: 280,
+        samples: 0,
+        ageHours: 0,
+        growthPerHour: 0,
+      };
+    }
+
+    let peak = startingBalance;
+    const enriched = points.map((p) => {
+      if (p.equity > peak) peak = p.equity;
+      const net = p.equity - startingBalance;
+      const growthPct = startingBalance > 0 ? (net / startingBalance) * 100 : 0;
+      const drawdown = Math.max(0, peak - p.equity);
+      const drawdownPct = peak > 0 ? (drawdown / peak) * 100 : 0;
+      return { ...p, net, growthPct, drawdown, drawdownPct };
+    });
+
+    const w = 920;
+    const h = 280;
+    const px = 20;
+    const py = 16;
+    const values = [...enriched.map((p) => p.equity), ...enriched.map((p) => p.balance), startingBalance];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const xFor = (i: number) => (enriched.length === 1 ? w / 2 : px + (i / (enriched.length - 1)) * (w - px * 2));
+    const yFor = (v: number) => h - py - ((v - min) / span) * (h - py * 2);
+    const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
+
+    const ageHours = Math.max(0, (enriched[enriched.length - 1].tsMs - enriched[0].tsMs) / 3600000);
+    const growthPerHour = ageHours > 0 ? (enriched[enriched.length - 1].equity - enriched[0].equity) / ageHours : 0;
+
+    return {
+      points: enriched,
+      equityPath: pathFor(enriched.map((p) => p.equity)),
+      balancePath: pathFor(enriched.map((p) => p.balance)),
+      width: w,
+      height: h,
+      samples: enriched.length,
+      ageHours,
+      growthPerHour,
+    };
+  }, [performancePoints, startingBalance]);
+
   return (
     <main>
       <header className="topbar">
@@ -1141,6 +1210,59 @@ export default function HomePage() {
             <div className="kpi"><span>Expectancy</span><strong className={analytics.expectancy >= 0 ? "up" : "down"}>{fmtMoney(analytics.expectancy)}</strong></div>
             <div className="kpi"><span>Max Drawdown</span><strong className="down">{fmtMoney(analytics.maxDrawdown)} ({analytics.maxDrawdownPct.toFixed(2)}%)</strong></div>
             <div className="kpi"><span>Avg Trade Duration</span><strong>{analytics.avgDurationMin.toFixed(1)} min</strong></div>
+          </div>
+
+          <div className="card growth-card">
+            <h3>Account Growth Ledger</h3>
+            <p className="muted">Precise timeline of balance/equity progression from the account start value.</p>
+            <div className="growth-meta">
+              <div><span>Samples</span><strong>{growthLedger.samples}</strong></div>
+              <div><span>Tracked Hours</span><strong>{growthLedger.ageHours.toFixed(2)}</strong></div>
+              <div><span>Growth / Hour</span><strong className={growthLedger.growthPerHour >= 0 ? "up" : "down"}>{fmtMoney(growthLedger.growthPerHour)}</strong></div>
+            </div>
+
+            {growthLedger.points.length ? (
+              <>
+                <div className="growth-chart-shell">
+                  <svg viewBox={`0 0 ${growthLedger.width} ${growthLedger.height}`} width="100%" height="280" role="img" aria-label="Account growth chart">
+                    <rect x="0" y="0" width={growthLedger.width} height={growthLedger.height} fill="#f8fcff" rx="12" />
+                    <path d={growthLedger.balancePath} fill="none" stroke="#2f4a7f" strokeWidth="2" />
+                    <path d={growthLedger.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
+                  </svg>
+                </div>
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Timestamp (UTC)</th>
+                        <th>Balance</th>
+                        <th>Equity</th>
+                        <th>Net vs Start</th>
+                        <th>Growth %</th>
+                        <th>Drawdown</th>
+                        <th>Drawdown %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {growthLedger.points.slice(-120).reverse().map((p) => (
+                        <tr key={`${p.ts}-${p.equity.toFixed(2)}-${p.balance.toFixed(2)}`}>
+                          <td>{p.ts}</td>
+                          <td>{fmtMoney(p.balance)}</td>
+                          <td>{fmtMoney(p.equity)}</td>
+                          <td className={p.net >= 0 ? "up" : "down"}>{fmtMoney(p.net)}</td>
+                          <td className={p.growthPct >= 0 ? "up" : "down"}>{p.growthPct.toFixed(3)}%</td>
+                          <td className={p.drawdown > 0 ? "down" : "muted"}>{fmtMoney(p.drawdown)}</td>
+                          <td className={p.drawdownPct > 0 ? "down" : "muted"}>{p.drawdownPct.toFixed(3)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p>No growth records yet.</p>
+            )}
           </div>
 
           <div className="card">

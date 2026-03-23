@@ -320,6 +320,45 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+.growth-card {
+  border-color: #c8ddd7;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.93), rgba(241, 252, 248, 0.9));
+}
+
+.growth-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+
+.growth-meta > div {
+  border: 1px solid #d1e4df;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.growth-meta span {
+  display: block;
+  font-size: 11px;
+  color: #6b8396;
+  margin-bottom: 4px;
+}
+
+.growth-meta strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.growth-chart-shell {
+  border: 1px solid #d9e7e2;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
 .performance-card {
   border: 1px solid #c6ddd7;
   background:
@@ -791,6 +830,10 @@ td {
   .performance-meta {
     text-align: left;
     min-width: 0;
+  }
+
+  .growth-meta {
+    grid-template-columns: 1fr;
   }
 }
 

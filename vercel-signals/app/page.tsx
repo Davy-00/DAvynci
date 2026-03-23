@@ -235,7 +235,7 @@ export default function HomePage() {
   const [pnlView, setPnlView] = useState<PnlView>("day");
   const [tab, setTab] = useState<MainTab>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [chartRange, setChartRange] = useState<ChartRange>("1d");
+  const [chartRange, setChartRange] = useState<ChartRange>("all");
   const [chartResolution, setChartResolution] = useState<ChartResolution>("raw");
   const [chartSmoothing, setChartSmoothing] = useState<ChartSmoothing>("none");
   const [chartScale, setChartScale] = useState<ChartScale>("auto");
@@ -253,6 +253,8 @@ export default function HomePage() {
   const tvContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileDeckRef = useRef<HTMLDivElement | null>(null);
   const fingerprintRef = useRef("");
+
+  const closeMenu = () => setMenuOpen(false);
 
   const applySnapshot = (next: Snapshot | null) => {
     const fp = snapshotFingerprint(next);
@@ -310,6 +312,29 @@ export default function HomePage() {
       if (es) es.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const onKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key === "Escape") closeMenu();
+    };
+
+    const onPointerDown = (evt: MouseEvent) => {
+      const target = evt.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("#main-nav")) return;
+      if (target.closest(".menu-btn")) return;
+      closeMenu();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -415,7 +440,7 @@ export default function HomePage() {
       new window.TradingView.widget({
         autosize: true,
         symbol: tvSymbol,
-        interval: "5",
+        interval: "60",
         timezone: "Etc/UTC",
         theme: "light",
         style: "1",
@@ -966,7 +991,13 @@ export default function HomePage() {
 
         <div className="topbar-right">
           <div className="live-pill">{liveMode === "stream" ? "LIVE STREAM" : "LIVE POLLING"}</div>
-          <button className="menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-controls="main-nav">
+          <button
+            className="menu-btn"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-controls="main-nav"
+            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+          >
             <span />
             <span />
             <span />
@@ -999,9 +1030,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      {menuOpen ? <div className="menu-backdrop" onClick={() => setMenuOpen(false)} /> : null}
+      {menuOpen ? <div className="menu-backdrop" onClick={closeMenu} /> : null}
       <nav id="main-nav" className={`menu-drawer ${menuOpen ? "open" : ""}`}>
-        <div className="menu-title">Navigation</div>
+        <div className="menu-head">
+          <div className="menu-title">Navigation</div>
+          <button type="button" className="menu-close" onClick={closeMenu} aria-label="Close navigation">
+            x
+          </button>
+        </div>
         {([
           ["overview", "Overview"],
           ["analytics", "Analytics"],
@@ -1019,7 +1055,7 @@ export default function HomePage() {
             className={`menu-link ${tab === k ? "active" : ""}`}
             onClick={() => {
               setTab(k);
-              setMenuOpen(false);
+              closeMenu();
             }}
           >
             {label}

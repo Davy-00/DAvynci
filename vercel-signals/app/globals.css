@@ -200,6 +200,26 @@ h3 {
   letter-spacing: 0.08em;
 }
 
+.menu-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.menu-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #d8e5f6;
+  background: #ffffff;
+  color: #23476f;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
 .menu-link {
   border: 1px solid #dde9f8;
   border-radius: 11px;

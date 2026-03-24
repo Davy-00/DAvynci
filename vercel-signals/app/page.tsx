@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const STARTING_BALANCE = 30;
-const LIVE_POLL_INTERVAL_MS = 1200;
+const LIVE_POLL_INTERVAL_MS = 2000;
 const KPI_ANIMATION_MS = 900;
 
 type PnlView = "day" | "week" | "month";

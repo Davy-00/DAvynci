@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const STARTING_BALANCE = 30;
+const LIVE_POLL_INTERVAL_MS = 1200;
+const KPI_ANIMATION_MS = 900;
 
 type PnlView = "day" | "week" | "month";
 type MainTab = "overview" | "analytics" | "pnl" | "signals" | "positions" | "trades" | "diary" | "events" | "logs" | "diagnostics";
@@ -244,7 +246,7 @@ export default function HomePage() {
     };
 
     loadSignals();
-    const poll = setInterval(loadSignals, 100);
+    const poll = setInterval(loadSignals, LIVE_POLL_INTERVAL_MS);
     return () => {
       mounted = false;
       clearInterval(poll);
@@ -529,13 +531,13 @@ export default function HomePage() {
     setDiaryMsg("Failed to save.");
   };
 
-  const uiBalance = useAnimatedNumber(pnl.currentBalance);
-  const uiEquity = useAnimatedNumber(pnl.currentEquity);
-  const uiOpen = useAnimatedNumber(floatingPnl);
-  const uiNet = useAnimatedNumber(pnl.net);
-  const uiDay = useAnimatedNumber(pnl.day);
-  const uiWeek = useAnimatedNumber(pnl.week);
-  const uiMonth = useAnimatedNumber(pnl.month);
+  const uiBalance = useAnimatedNumber(pnl.currentBalance, KPI_ANIMATION_MS);
+  const uiEquity = useAnimatedNumber(pnl.currentEquity, KPI_ANIMATION_MS);
+  const uiOpen = useAnimatedNumber(floatingPnl, KPI_ANIMATION_MS);
+  const uiNet = useAnimatedNumber(pnl.net, KPI_ANIMATION_MS);
+  const uiDay = useAnimatedNumber(pnl.day, KPI_ANIMATION_MS);
+  const uiWeek = useAnimatedNumber(pnl.week, KPI_ANIMATION_MS);
+  const uiMonth = useAnimatedNumber(pnl.month, KPI_ANIMATION_MS);
 
   const analytics = useMemo(() => {
     const trades = (snapshot?.closed_trades || []).map((t) => ({
@@ -687,6 +689,8 @@ export default function HomePage() {
           drawdown: number;
           drawdownPct: number;
         }>,
+        equityAreaPath: "",
+        balanceAreaPath: "",
         equityPath: "",
         balancePath: "",
         yTicks: [] as Array<{ y: number; label: string }>,
@@ -700,6 +704,10 @@ export default function HomePage() {
         samples: 0,
         ageHours: 0,
         growthPerHour: 0,
+        firstPoint: null as null | { x: number; yEq: number; yBal: number; equity: number; balance: number },
+        lastPoint: null as null | { x: number; yEq: number; yBal: number; equity: number; balance: number },
+        maxPoint: null as null | { x: number; yEq: number; equity: number },
+        minPoint: null as null | { x: number; yEq: number; equity: number },
       };
     }
 
@@ -726,6 +734,30 @@ export default function HomePage() {
     const xFor = (i: number) => (enriched.length === 1 ? (plotLeft + plotRight) / 2 : plotLeft + (i / (enriched.length - 1)) * (plotRight - plotLeft));
     const yFor = (v: number) => plotBottom - ((v - min) / span) * (plotBottom - plotTop);
     const pathFor = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(2)} ${yFor(v).toFixed(2)}`).join(" ");
+
+    const plotted = enriched.map((p, i) => ({
+      ...p,
+      x: xFor(i),
+      yEq: yFor(p.equity),
+      yBal: yFor(p.balance),
+    }));
+
+    const areaPathFor = (arr: Array<{ x: number; y: number }>) => {
+      if (!arr.length) return "";
+      const head = `M${arr[0].x.toFixed(2)} ${plotBottom.toFixed(2)}`;
+      const body = arr.map((p) => `L${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+      const tail = `L${arr[arr.length - 1].x.toFixed(2)} ${plotBottom.toFixed(2)} Z`;
+      return `${head} ${body} ${tail}`;
+    };
+
+    const firstPoint = plotted[0] || null;
+    const lastPoint = plotted[plotted.length - 1] || null;
+    const maxPoint = plotted.length
+      ? plotted.reduce((best, p) => (p.equity > best.equity ? p : best), plotted[0])
+      : null;
+    const minPoint = plotted.length
+      ? plotted.reduce((best, p) => (p.equity < best.equity ? p : best), plotted[0])
+      : null;
 
     const yTicks = [0, 1, 2, 3, 4].map((i) => {
       const ratio = i / 4;
@@ -754,6 +786,8 @@ export default function HomePage() {
 
     return {
       points: enriched,
+      equityAreaPath: areaPathFor(plotted.map((p) => ({ x: p.x, y: p.yEq }))),
+      balanceAreaPath: areaPathFor(plotted.map((p) => ({ x: p.x, y: p.yBal }))),
       equityPath: pathFor(enriched.map((p) => p.equity)),
       balancePath: pathFor(enriched.map((p) => p.balance)),
       yTicks,
@@ -767,6 +801,10 @@ export default function HomePage() {
       samples: enriched.length,
       ageHours,
       growthPerHour,
+      firstPoint: firstPoint ? { x: firstPoint.x, yEq: firstPoint.yEq, yBal: firstPoint.yBal, equity: firstPoint.equity, balance: firstPoint.balance } : null,
+      lastPoint: lastPoint ? { x: lastPoint.x, yEq: lastPoint.yEq, yBal: lastPoint.yBal, equity: lastPoint.equity, balance: lastPoint.balance } : null,
+      maxPoint: maxPoint ? { x: maxPoint.x, yEq: maxPoint.yEq, equity: maxPoint.equity } : null,
+      minPoint: minPoint ? { x: minPoint.x, yEq: minPoint.yEq, equity: minPoint.equity } : null,
     };
   }, [performancePoints, snapshot, startingBalance]);
 
@@ -819,24 +857,6 @@ export default function HomePage() {
             <div className="kpi"><span>Trades Today</span><strong>{snapshot?.guard_state?.today_opened_trades ?? 0}</strong></div>
             <div className="kpi"><span>Open</span><strong className={uiOpen >= 0 ? "up" : "down"}>{fmtMoney(uiOpen)}</strong></div>
             <div className="kpi"><span>Net</span><strong className={uiNet >= 0 ? "up" : "down"}>{fmtMoney(uiNet)}</strong></div>
-          </div>
-
-          <div className="card growth-card">
-            <h3>Account Growth Monitor</h3>
-            <p className="muted">Starting Equity {fmtMoney(startingBalance)}</p>
-            {growthLedger.points.length ? (
-              <div className="growth-chart-shell">
-                <svg viewBox={`0 0 ${growthLedger.width} ${growthLedger.height}`} width="100%" height="220" role="img" aria-label="Overview growth graph">
-                  <rect x="0" y="0" width={growthLedger.width} height={growthLedger.height} fill="#ffffff" rx="12" />
-                  <line x1={growthLedger.plotLeft} y1={growthLedger.plotBottom} x2={growthLedger.plotRight} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.2" />
-                  <line x1={growthLedger.plotLeft} y1={growthLedger.plotTop} x2={growthLedger.plotLeft} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.2" />
-                  <path d={growthLedger.balancePath} fill="none" stroke="#2f4a7f" strokeWidth="2" />
-                  <path d={growthLedger.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
-                </svg>
-              </div>
-            ) : (
-              <p className="muted">Waiting for account updates...</p>
-            )}
           </div>
 
           <div className="mobile-trader-cards" ref={mobileDeckRef} onScroll={onMobileDeckScroll}>
@@ -1041,6 +1061,14 @@ export default function HomePage() {
                         <stop offset="0%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#f3fbf8" />
                       </linearGradient>
+                      <linearGradient id="growth-equity-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(14, 159, 110, 0.4)" />
+                        <stop offset="100%" stopColor="rgba(14, 159, 110, 0.03)" />
+                      </linearGradient>
+                      <linearGradient id="growth-balance-fill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(47, 74, 127, 0.26)" />
+                        <stop offset="100%" stopColor="rgba(47, 74, 127, 0.02)" />
+                      </linearGradient>
                     </defs>
                     <rect x="0" y="0" width={growthLedger.width} height={growthLedger.height} fill="url(#growth-bg)" rx="12" />
                     {growthLedger.yTicks.map((t, i) => (
@@ -1066,8 +1094,32 @@ export default function HomePage() {
                     ))}
                     <line x1={growthLedger.plotLeft} y1={growthLedger.plotBottom} x2={growthLedger.plotRight} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.4" />
                     <line x1={growthLedger.plotLeft} y1={growthLedger.plotTop} x2={growthLedger.plotLeft} y2={growthLedger.plotBottom} stroke="#7a95a8" strokeWidth="1.4" />
+                    <path d={growthLedger.balanceAreaPath} fill="url(#growth-balance-fill)" />
+                    <path d={growthLedger.equityAreaPath} fill="url(#growth-equity-fill)" />
                     <path d={growthLedger.balancePath} fill="none" stroke="#2f4a7f" strokeWidth="2" />
                     <path d={growthLedger.equityPath} fill="none" stroke="#0e9f6e" strokeWidth="3" />
+                    {growthLedger.firstPoint ? (
+                      <circle cx={growthLedger.firstPoint.x} cy={growthLedger.firstPoint.yEq} r="3.5" fill="#ffffff" stroke="#0e9f6e" strokeWidth="1.6" />
+                    ) : null}
+                    {growthLedger.maxPoint ? (
+                      <g>
+                        <circle cx={growthLedger.maxPoint.x} cy={growthLedger.maxPoint.yEq} r="5" fill="#ffffff" stroke="#0e9f6e" strokeWidth="2.2" />
+                        <text x={growthLedger.maxPoint.x + 8} y={growthLedger.maxPoint.yEq - 8} fontSize="10" fill="#0d7f58">HIGH {fmtMoney(growthLedger.maxPoint.equity)}</text>
+                      </g>
+                    ) : null}
+                    {growthLedger.minPoint ? (
+                      <g>
+                        <circle cx={growthLedger.minPoint.x} cy={growthLedger.minPoint.yEq} r="5" fill="#ffffff" stroke="#9b4b3f" strokeWidth="2" />
+                        <text x={growthLedger.minPoint.x + 8} y={growthLedger.minPoint.yEq + 14} fontSize="10" fill="#9b4b3f">LOW {fmtMoney(growthLedger.minPoint.equity)}</text>
+                      </g>
+                    ) : null}
+                    {growthLedger.lastPoint ? (
+                      <>
+                        <circle cx={growthLedger.lastPoint.x} cy={growthLedger.lastPoint.yEq} r="6" fill="#ffffff" stroke="#0e9f6e" strokeWidth="2.6" />
+                        <circle cx={growthLedger.lastPoint.x} cy={growthLedger.lastPoint.yEq} r="2" fill="#0e9f6e" />
+                        <circle cx={growthLedger.lastPoint.x} cy={growthLedger.lastPoint.yBal} r="4" fill="#ffffff" stroke="#2f4a7f" strokeWidth="2" />
+                      </>
+                    ) : null}
                     {growthLedger.yTicks.map((t, i) => (
                       <text key={`yt-${i}`} x={growthLedger.plotLeft - 8} y={t.y + 4} textAnchor="end" fontSize="11" fill="#5e7891">
                         {t.label}
@@ -1081,9 +1133,10 @@ export default function HomePage() {
                     <text x={growthLedger.plotLeft - 44} y={growthLedger.plotTop - 2} fontSize="11" fill="#5e7891">Y (USD)</text>
                     <text x={(growthLedger.plotLeft + growthLedger.plotRight) / 2} y={growthLedger.height - 6} textAnchor="middle" fontSize="11" fill="#5e7891">X (UTC Time)</text>
                   </svg>
-                  <div className="row" style={{ justifyContent: "flex-end", gap: 14, marginTop: 8 }}>
-                    <span className="muted">Equity</span>
-                    <span className="muted">Balance</span>
+                  <div className="growth-legend">
+                    <span className="growth-chip equity">Equity {fmtMoney(growthLedger.lastPoint?.equity ?? 0)}</span>
+                    <span className="growth-chip balance">Balance {fmtMoney(growthLedger.lastPoint?.balance ?? 0)}</span>
+                    <span className="growth-chip neutral">Spread {fmtMoney((growthLedger.lastPoint?.equity ?? 0) - (growthLedger.lastPoint?.balance ?? 0))}</span>
                   </div>
                 </div>
 

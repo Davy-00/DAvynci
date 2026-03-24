@@ -436,6 +436,43 @@ h3 {
   margin-bottom: 10px;
 }
 
+.growth-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.growth-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+}
+
+.growth-chip.equity {
+  color: #0d7f58;
+  background: rgba(14, 159, 110, 0.12);
+  border-color: rgba(14, 159, 110, 0.24);
+}
+
+.growth-chip.balance {
+  color: #2f4a7f;
+  background: rgba(47, 74, 127, 0.12);
+  border-color: rgba(47, 74, 127, 0.24);
+}
+
+.growth-chip.neutral {
+  color: #5b6c7c;
+  background: rgba(125, 145, 166, 0.12);
+  border-color: rgba(125, 145, 166, 0.24);
+}
+
 .performance-card {
   border: 1px solid #c6ddd7;
   background:
